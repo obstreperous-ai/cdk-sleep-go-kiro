@@ -1,0 +1,27 @@
+{
+  "name": "cdk-go-tdd",
+  "image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "go.useLanguageServer": true,
+        "go.testFlags": [
+          "-v"
+        ],
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "golang.go",
+        "AmazonWebServices.aws-toolkit-vscode"
+      ]
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteUser": "vscode"
+}
