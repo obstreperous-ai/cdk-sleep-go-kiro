@@ -8,6 +8,9 @@ import (
 	"github.com/aws/jsii-runtime-go"
 )
 
+// TestCdkBaseStack is a baseline synthesis validation proving the CDK jsii
+// bridge and stack definition work end-to-end. It will be replaced with
+// resource-specific assertions as infrastructure is added.
 func TestCdkBaseStack(t *testing.T) {
 	defer jsii.Close()
 

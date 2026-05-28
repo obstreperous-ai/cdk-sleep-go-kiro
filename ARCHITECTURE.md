@@ -1,5 +1,7 @@
 # Architecture
 
+> This document describes the planned architecture. Components will be implemented incrementally.
+
 ## Event-Driven Sleep Audio Pipeline
 
 This project implements an event-driven sleep audio processing pipeline using AWS CDK in Go.
