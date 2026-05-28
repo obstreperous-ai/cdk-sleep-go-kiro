@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      GOPROXY: direct
+      GONOSUMCHECK: "*"
+      NODE_OPTIONS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: CDK Synth
+        run: cdk synth

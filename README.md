@@ -1,12 +1,14 @@
-# Welcome to your CDK Go project!
+# CDK Sleep Audio Pipeline
 
-This is a blank project for CDK development with Go.
+This is an event-driven sleep audio processing pipeline built with AWS CDK in Go. It uses S3, EventBridge, Lambda, DynamoDB, and SNS to process uploaded sleep audio recordings.
 
-The `cdk.json` file tells the CDK toolkit how to execute your app.
+## Strict TDD Rules
 
-## Useful commands
+Write failing tests first, then minimal code. Run `go test -v ./...` and `cdk synth` before every commit.
 
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk synth`       emits the synthesized CloudFormation template
- * `go test`         run unit tests
+## Useful Commands
+
+- `go test -v ./...` - run unit tests
+- `cdk synth` - synthesize CloudFormation
+- `cdk deploy` - deploy stack
+- `cdk diff` - compare with deployed
