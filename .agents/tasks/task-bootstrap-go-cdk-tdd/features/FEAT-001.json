@@ -1,0 +1,19 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Activate Go tests with CDK assertions, uncomment and verify baseline test in cdk-base_test.go passes against the empty stack",
+  "status": "completed",
+  "steps": [
+    "Uncomment the test code in cdk-base_test.go, but modify it to test for the actual empty stack (it currently asserts an SQS queue which doesn't exist). Replace the SQS assertion with a simple assertion that the stack synthesizes without error, e.g., use template.ToJSON() != nil or assertions.Template_FromStack and assert ResourceCountIs for any resource type is 0 or just that the template can be created.",
+    "Run GONOSUMCHECK='*' GOPROXY=direct go test -v ./... to confirm the test passes."
+  ],
+  "acceptance_criteria": [
+    "cdk-base_test.go contains an uncommented, passing test that validates the stack synthesizes",
+    "Running 'go test -v ./...' shows at least one PASS result"
+  ],
+  "verification": [
+    "GONOSUMCHECK='*' GOPROXY=direct go test -v ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "NODE_OPTIONS must also be unset (NODE_OPTIONS='') when running go test, not just cdk commands. The jsii runtime spawns a Node.js child process which fails if the proxy-bootstrap.js preload is set. Full test command: NODE_OPTIONS='' GONOSUMCHECK='*' GOPROXY=direct go test -v ./..."
+}

@@ -1,26 +1,27 @@
 package main
 
-// import (
-// 	"testing"
+import (
+	"testing"
 
-// 	"github.com/aws/aws-cdk-go/awscdk/v2"
-// 	"github.com/aws/aws-cdk-go/awscdk/v2/assertions"
-// 	"github.com/aws/jsii-runtime-go"
-// )
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/assertions"
+	"github.com/aws/jsii-runtime-go"
+)
 
-// example tests. To run these tests, uncomment this file along with the
-// example resource in cdk-base_test.go
-// func TestCdkBaseStack(t *testing.T) {
-// 	// GIVEN
-// 	app := awscdk.NewApp(nil)
+// TestCdkBaseStack is a baseline synthesis validation proving the CDK jsii
+// bridge and stack definition work end-to-end. It will be replaced with
+// resource-specific assertions as infrastructure is added.
+func TestCdkBaseStack(t *testing.T) {
+	defer jsii.Close()
 
-// 	// WHEN
-// 	stack := NewCdkBaseStack(app, "MyStack", nil)
+	// GIVEN
+	app := awscdk.NewApp(nil)
 
-// 	// THEN
-// 	template := assertions.Template_FromStack(stack, nil)
+	// WHEN
+	stack := NewCdkBaseStack(app, "MyStack", nil)
 
-// 	template.HasResourceProperties(jsii.String("AWS::SQS::Queue"), map[string]interface{}{
-// 		"VisibilityTimeout": 300,
-// 	})
-// }
+	// THEN
+	template := assertions.Template_FromStack(stack, nil)
+
+	template.ResourceCountIs(jsii.String("AWS::SQS::Queue"), jsii.Number(0))
+}
