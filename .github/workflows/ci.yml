@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOPROXY: direct
-      GONOSUMCHECK: "*"
+      GOSUMDB: off
       NODE_OPTIONS: ""
     steps:
       - uses: actions/checkout@v4
