@@ -41,8 +41,7 @@ All infrastructure is defined as AWS CDK constructs in Go, deployed across `dev`
 ### Ingestion
 
 1. A client (mobile app, web frontend, or direct SDK call) uploads a raw audio file to the **S3 Input Bucket** under a key pattern such as `uploads/{user_id}/{timestamp}/{filename}`.
-2. S3 emits an `ObjectCreated` event to **Amazon EventBridge** via an S3 event notification rule.
-
+2. S3 emits an `Object Created` event to **Amazon EventBridge** when EventBridge notifications are enabled on the bucket.
 ### Orchestration
 
 3. An **EventBridge Rule** matches the `aws.s3` source and `Object Created` detail type, filtering by the `uploads/` key prefix. On match, it invokes an **AWS Step Functions** Express Workflow as the target.
