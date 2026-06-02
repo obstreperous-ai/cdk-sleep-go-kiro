@@ -25,5 +25,5 @@
     "NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK='*' npx cdk synth"
   ],
   "blocked_reason": null,
-  "findings": "CDK synthesizes EventBridge notifications for S3 buckets via Custom::S3BucketNotifications resource (not a direct property on AWS::S3::Bucket). Tests must use template.HasResourceProperties with Custom::S3BucketNotifications type to verify EventBridge is enabled. The 'Runtime process exited abnormally: waitid: no child processes' message in test output is cosmetic noise from jsii runtime cleanup and does not affect test results."
+  "findings": "CDK synthesizes EventBridge notifications for S3 buckets via Custom::S3BucketNotifications resource (not a direct property on AWS::S3::Bucket). Tests must use template.HasResourceProperties with Custom::S3BucketNotifications type to verify EventBridge is enabled. The 'Runtime process exited abnormally: waitid: no child processes' message in test output is cosmetic noise from jsii runtime cleanup and does not affect test results. Review follow-up: upgraded Lambda to NODEJS_20_X, strengthened EventBridge rule test to assert detail.bucket.name filter, and changed BlockPublicAccess test to AllResourcesProperties to verify both buckets."
 }
