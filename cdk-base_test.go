@@ -73,8 +73,8 @@ func TestBucketsHaveBlockPublicAccess(t *testing.T) {
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// Both buckets should have public access blocked
-	template.HasResourceProperties(jsii.String("AWS::S3::Bucket"), map[string]interface{}{
+	// All S3 buckets must have public access blocked
+	template.AllResourcesProperties(jsii.String("AWS::S3::Bucket"), map[string]interface{}{
 		"PublicAccessBlockConfiguration": map[string]interface{}{
 			"BlockPublicAcls":       true,
 			"BlockPublicPolicy":     true,
@@ -92,10 +92,16 @@ func TestEventBridgeRuleExists(t *testing.T) {
 	template := assertions.Template_FromStack(stack, nil)
 
 	// EventBridge rule must match Object Created events from aws.s3 source
+	// and filter on the input bucket name (token value verified via AnyValue matcher)
 	template.HasResourceProperties(jsii.String("AWS::Events::Rule"), map[string]interface{}{
 		"EventPattern": map[string]interface{}{
 			"source":      []interface{}{"aws.s3"},
 			"detail-type": []interface{}{"Object Created"},
+			"detail": map[string]interface{}{
+				"bucket": map[string]interface{}{
+					"name": assertions.Match_AnyValue(),
+				},
+			},
 		},
 	})
 }
@@ -125,7 +131,7 @@ func TestPlaceholderLambdaExists(t *testing.T) {
 
 	// A placeholder Lambda function should exist as EventBridge rule target
 	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
-		"Runtime": "nodejs18.x",
+		"Runtime": "nodejs20.x",
 		"Handler": "index.handler",
 	})
 }

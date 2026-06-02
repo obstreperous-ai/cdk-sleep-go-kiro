@@ -40,7 +40,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// Placeholder Lambda - stub target for EventBridge rule (will be replaced by Step Functions)
 	placeholderFn := awslambda.NewFunction(stack, jsii.String("PlaceholderProcessorFn"), &awslambda.FunctionProps{
-		Runtime: awslambda.Runtime_NODEJS_18_X(),
+		Runtime: awslambda.Runtime_NODEJS_20_X(),
 		Handler: jsii.String("index.handler"),
 		Code:    awslambda.Code_FromInline(jsii.String("exports.handler = async () => { return { statusCode: 200 }; };")),
 	})
