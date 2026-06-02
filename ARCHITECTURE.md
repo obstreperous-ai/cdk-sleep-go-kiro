@@ -109,7 +109,7 @@ flowchart TD
     end
 
     Client -->|upload| S3In
-    S3In -->|ObjectCreated event| EB
+    S3In -->|Object Created event| EB
     EB -->|trigger| SFN
 
     SFN --> LambdaValidate
