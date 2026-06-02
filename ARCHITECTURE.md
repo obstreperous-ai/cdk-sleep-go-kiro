@@ -50,8 +50,8 @@ All infrastructure is defined as AWS CDK constructs in Go, deployed across `dev`
 
 The Step Functions state machine executes the following states in sequence:
 
-4. **Validate Input** - A Lambda task reads the object metadata from S3 and confirms the file type (e.g., `.mp3`, `.wav`, `.m4a`) and size are within acceptable bounds. On failure, it transitions directly to the Error Notification state.
-5. **Extract Metadata** - A Lambda task calls the S3 `HeadObject` API to extract duration, format, bit rate, and user ID from the S3 key. It writes an initial record to **DynamoDB** with `processing_status = IN_PROGRESS`.
+4. **Validate Input** - A Lambda task reads the object headers via S3 `HeadObject` and confirms the file type (e.g., `.mp3`, `.wav`, `.m4a`) and size are within acceptable bounds. On failure, it transitions directly to the Error Notification state.
+5. **Extract Metadata** - A Lambda task parses `user_id` (and other identifiers) from the S3 key and reads object headers via S3 `HeadObject` (e.g., size, content-type, user-defined metadata). If audio properties such as duration/bit rate are required, it runs an audio probe step (e.g., ffprobe/mediainfo) and then writes an initial record to **DynamoDB** with `processing_status = IN_PROGRESS`.
 6. **AI Enhancement (Choice)** - A Choice state inspects the job configuration embedded in the EventBridge event payload:
    - If `enhancement_type = polly`, invoke **Amazon Polly** to synthesise a soothing narration layer or convert a text script to speech.
    - If `enhancement_type = bedrock`, invoke **Amazon Bedrock** (e.g., `amazon.titan-tts-v1` or a compatible audio model) to generate ambient sleep sounds or blend audio layers using AI.
