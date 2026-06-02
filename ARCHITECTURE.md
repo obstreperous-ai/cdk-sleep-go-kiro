@@ -216,7 +216,7 @@ Log retention is set per environment (e.g., 7 days in `dev`, 90 days in `prod`).
 | Lambda error rate | `Errors / Invocations` | > 5% over 5 min | Notify SNS Error Topic |
 | Step Functions execution failures | `ExecutionsFailed` | >= 1 in 1 min | Notify SNS Error Topic |
 | Step Functions throttles | `ExecutionThrottled` | >= 1 in 1 min | Notify SNS Error Topic |
-| DynamoDB throttles | `UserErrors` | >= 5 in 5 min | Notify SNS Error Topic |
+| DynamoDB throttles | `ThrottledRequests` | >= 5 in 5 min | Notify SNS Error Topic |
 | S3 4xx errors on input bucket | `4xxErrors` | >= 10 in 5 min | Notify SNS Error Topic |
 
 ### Distributed Tracing
