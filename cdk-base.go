@@ -2,7 +2,10 @@ package main
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
-	// "github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -18,12 +21,45 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	}
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
-	// The code that defines your stack goes here
+	// S3 Input Bucket - receives raw audio uploads
+	inputBucket := awss3.NewBucket(stack, jsii.String("SleepAudioInputBucket"), &awss3.BucketProps{
+		Encryption:        awss3.BucketEncryption_S3_MANAGED,
+		Versioned:         jsii.Bool(true),
+		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		EventBridgeEnabled: jsii.Bool(true),
+		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
+	})
 
-	// example resource
-	// queue := awssqs.NewQueue(stack, jsii.String("CdkBaseQueue"), &awssqs.QueueProps{
-	// 	VisibilityTimeout: awscdk.Duration_Seconds(jsii.Number(300)),
-	// })
+	// S3 Output Bucket - stores processed audio artifacts
+	awss3.NewBucket(stack, jsii.String("SleepAudioOutputBucket"), &awss3.BucketProps{
+		Encryption:        awss3.BucketEncryption_S3_MANAGED,
+		Versioned:         jsii.Bool(true),
+		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
+	})
+
+	// Placeholder Lambda - stub target for EventBridge rule (will be replaced by Step Functions)
+	placeholderFn := awslambda.NewFunction(stack, jsii.String("PlaceholderProcessorFn"), &awslambda.FunctionProps{
+		Runtime: awslambda.Runtime_NODEJS_18_X(),
+		Handler: jsii.String("index.handler"),
+		Code:    awslambda.Code_FromInline(jsii.String("exports.handler = async () => { return { statusCode: 200 }; };")),
+	})
+
+	// EventBridge Rule - matches Object Created events from the input bucket
+	rule := awsevents.NewRule(stack, jsii.String("InputBucketObjectCreatedRule"), &awsevents.RuleProps{
+		EventPattern: &awsevents.EventPattern{
+			Source:     &[]*string{jsii.String("aws.s3")},
+			DetailType: &[]*string{jsii.String("Object Created")},
+			Detail: &map[string]interface{}{
+				"bucket": map[string]interface{}{
+					"name": []interface{}{inputBucket.BucketName()},
+				},
+			},
+		},
+	})
+
+	// Add the placeholder Lambda as the rule target
+	rule.AddTarget(awseventstargets.NewLambdaFunction(placeholderFn, nil))
 
 	return stack
 }
@@ -48,23 +84,5 @@ func env() *awscdk.Environment {
 	// If unspecified, this stack will be "environment-agnostic".
 	// Account/Region-dependent features and context lookups will not work, but a
 	// single synthesized template can be deployed anywhere.
-	//---------------------------------------------------------------------------
 	return nil
-
-	// Uncomment if you know exactly what account and region you want to deploy
-	// the stack to. This is the recommendation for production stacks.
-	//---------------------------------------------------------------------------
-	// return &awscdk.Environment{
-	//  Account: jsii.String("123456789012"),
-	//  Region:  jsii.String("us-east-1"),
-	// }
-
-	// Uncomment to specialize this stack for the AWS Account and Region that are
-	// implied by the current CLI configuration. This is recommended for dev
-	// stacks.
-	//---------------------------------------------------------------------------
-	// return &awscdk.Environment{
-	//  Account: jsii.String(os.Getenv("CDK_DEFAULT_ACCOUNT")),
-	//  Region:  jsii.String(os.Getenv("CDK_DEFAULT_REGION")),
-	// }
 }

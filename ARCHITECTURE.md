@@ -145,6 +145,38 @@ flowchart TD
 
 ---
 
+## Implemented Components (Current State)
+
+The following components are deployed in the current CDK stack:
+
+| Component | Status | Configuration |
+|---|---|---|
+| **S3 Input Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), EventBridge notifications enabled, removal policy: DESTROY |
+| **S3 Output Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), removal policy: DESTROY |
+| **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name |
+| **Placeholder Lambda** | Deployed | Stub Node.js 18.x function as EventBridge rule target; will be replaced by Step Functions workflow |
+
+### Current State Diagram
+
+```mermaid
+flowchart TD
+    Client([Client / Mobile App])
+
+    S3In["S3 Input Bucket\n(encrypted, versioned,\nEventBridge enabled)"]
+    EB["EventBridge Rule\n(Object Created)"]
+    Lambda["Placeholder Lambda\n(stub - to be replaced\nby Step Functions)"]
+    S3Out["S3 Output Bucket\n(encrypted, versioned)"]
+
+    Client -->|upload| S3In
+    S3In -->|Object Created event| EB
+    EB -->|invoke| Lambda
+    Lambda -.->|future: write processed audio| S3Out
+```
+
+> **Next milestone:** Replace the placeholder Lambda with a Step Functions Express Workflow that orchestrates validation, AI enhancement, and packaging steps.
+
+---
+
 ## AWS Services and Rationale
 
 | Service | Role in Pipeline | Why This Service |
