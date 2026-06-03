@@ -4,8 +4,10 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsstepfunctions"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsstepfunctionstasks"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -23,11 +25,11 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// S3 Input Bucket - receives raw audio uploads
 	inputBucket := awss3.NewBucket(stack, jsii.String("SleepAudioInputBucket"), &awss3.BucketProps{
-		Encryption:        awss3.BucketEncryption_S3_MANAGED,
-		Versioned:         jsii.Bool(true),
-		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		Encryption:         awss3.BucketEncryption_S3_MANAGED,
+		Versioned:          jsii.Bool(true),
+		BlockPublicAccess:  awss3.BlockPublicAccess_BLOCK_ALL(),
 		EventBridgeEnabled: jsii.Bool(true),
-		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
+		RemovalPolicy:      awscdk.RemovalPolicy_DESTROY,
 	})
 
 	// S3 Output Bucket - stores processed audio artifacts
@@ -38,11 +40,32 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
 	})
 
-	// Placeholder Lambda - stub target for EventBridge rule (will be replaced by Step Functions)
-	placeholderFn := awslambda.NewFunction(stack, jsii.String("PlaceholderProcessorFn"), &awslambda.FunctionProps{
-		Runtime: awslambda.Runtime_NODEJS_20_X(),
-		Handler: jsii.String("index.handler"),
-		Code:    awslambda.Code_FromInline(jsii.String("exports.handler = async () => { return { statusCode: 200 }; };")),
+	// CloudWatch Log Group for state machine logging
+	logGroup := awslogs.NewLogGroup(stack, jsii.String("SleepAudioPipelineLogGroup"), &awslogs.LogGroupProps{
+		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+	})
+
+	// Step Functions CallAwsService task for Amazon Polly synthesizeSpeech
+	pollyTask := awsstepfunctionstasks.NewCallAwsService(stack, jsii.String("PollyTask"), &awsstepfunctionstasks.CallAwsServiceProps{
+		Service: jsii.String("polly"),
+		Action:  jsii.String("synthesizeSpeech"),
+		Parameters: &map[string]interface{}{
+			"Text":         "Welcome to your sleep audio session. Relax and breathe deeply.",
+			"OutputFormat": "mp3",
+			"VoiceId":      "Joanna",
+		},
+		IamResources: &[]*string{jsii.String("*")},
+	})
+
+	// Step Functions State Machine
+	stateMachine := awsstepfunctions.NewStateMachine(stack, jsii.String("SleepAudioPipelineStateMachine"), &awsstepfunctions.StateMachineProps{
+		DefinitionBody: awsstepfunctions.DefinitionBody_FromChainable(pollyTask),
+		Logs: &awsstepfunctions.LogOptions{
+			Destination:          logGroup,
+			Level:                awsstepfunctions.LogLevel_ALL,
+			IncludeExecutionData: jsii.Bool(true),
+		},
+		TracingEnabled: jsii.Bool(true),
 	})
 
 	// EventBridge Rule - matches Object Created events from the input bucket
@@ -58,8 +81,8 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 	})
 
-	// Add the placeholder Lambda as the rule target
-	rule.AddTarget(awseventstargets.NewLambdaFunction(placeholderFn, nil))
+	// Add the state machine as the rule target
+	rule.AddTarget(awseventstargets.NewSfnStateMachine(stateMachine, nil))
 
 	return stack
 }

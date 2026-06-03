@@ -153,8 +153,19 @@ The following components are deployed in the current CDK stack:
 |---|---|---|
 | **S3 Input Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), EventBridge notifications enabled, removal policy: DESTROY |
 | **S3 Output Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), removal policy: DESTROY |
-| **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name |
-| **Placeholder Lambda** | Deployed | Stub Node.js 18.x function as EventBridge rule target; will be replaced by Step Functions workflow |
+| **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name; targets the Step Functions state machine |
+| **Step Functions State Machine** | Deployed | Contains a Polly `synthesizeSpeech` CallAwsService task; logging at ALL level with execution data; X-Ray tracing enabled |
+| **CloudWatch Log Group** | Deployed | Destination for state machine execution logs; removal policy: DESTROY |
+
+### Orchestration Layer
+
+The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as the orchestration backbone for the audio processing pipeline. It currently contains a single task that calls Amazon Polly's `synthesizeSpeech` API via the `CallAwsService` integration pattern. The state machine is configured with:
+
+- **CloudWatch Logs** at `ALL` level with execution data included, enabling full visibility into each execution.
+- **X-Ray tracing** enabled for distributed tracing across service boundaries.
+- **IAM policy** granting `polly:SynthesizeSpeech` permission scoped to all resources.
+
+The EventBridge rule triggers the state machine on every S3 Object Created event from the input bucket, passing the full event payload as execution input.
 
 ### Current State Diagram
 
@@ -164,16 +175,20 @@ flowchart TD
 
     S3In["S3 Input Bucket\n(encrypted, versioned,\nEventBridge enabled)"]
     EB["EventBridge Rule\n(Object Created)"]
-    Lambda["Placeholder Lambda\n(stub - to be replaced\nby Step Functions)"]
+    SFN["Step Functions\nState Machine"]
+    Polly["Polly Task\n(synthesizeSpeech)"]
+    CWLogs["CloudWatch Log Group\n(execution logs)"]
     S3Out["S3 Output Bucket\n(encrypted, versioned)"]
 
     Client -->|upload| S3In
     S3In -->|Object Created event| EB
-    EB -->|invoke| Lambda
-    Lambda -.->|future: write processed audio| S3Out
+    EB -->|start execution| SFN
+    SFN --> Polly
+    SFN -. logs .-> CWLogs
+    Polly -.->|future: write processed audio| S3Out
 ```
 
-> **Next milestone:** Replace the placeholder Lambda with a Step Functions Express Workflow that orchestrates validation, AI enhancement, and packaging steps.
+> **Next milestone:** Add validation, metadata extraction, AI enhancement choice (Polly/Bedrock/passthrough), packaging, and error-handling states to the state machine.
 
 ---
 

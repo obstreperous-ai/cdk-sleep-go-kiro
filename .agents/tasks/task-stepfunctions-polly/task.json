@@ -1,0 +1,7 @@
+{
+  "task_id": "task-stepfunctions-polly",
+  "task_description": "Replace placeholder Lambda with a Step Functions state machine that includes an Amazon Polly CallAwsService task. Wire the EventBridge rule to target the state machine. Follow strict TDD. Update ARCHITECTURE.md.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}

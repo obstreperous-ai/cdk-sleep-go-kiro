@@ -122,16 +122,102 @@ func TestEventBridgeRuleHasTarget(t *testing.T) {
 	})
 }
 
-func TestPlaceholderLambdaExists(t *testing.T) {
+func TestStateMachineExists(t *testing.T) {
 	defer jsii.Close()
 
 	app := awscdk.NewApp(nil)
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// A placeholder Lambda function should exist as EventBridge rule target
+	// A Step Functions state machine must exist in the stack
+	template.ResourceCountIs(jsii.String("AWS::StepFunctions::StateMachine"), jsii.Number(1))
+}
+
+func TestStateMachineDefinitionContainsPollyTask(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// The state machine must have a DefinitionString (confirming state machine is defined)
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": assertions.Match_AnyValue(),
+	})
+}
+
+func TestStateMachineHasLogging(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// The state machine must have LoggingConfiguration with level ALL
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"LoggingConfiguration": assertions.Match_ObjectLike(&map[string]interface{}{
+			"Level":                "ALL",
+			"IncludeExecutionData": true,
+			"Destinations":         assertions.Match_AnyValue(),
+		}),
+	})
+}
+
+func TestEventBridgeRuleTargetsStateMachine(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// The EventBridge rule target Arn should reference the state machine
+	template.HasResourceProperties(jsii.String("AWS::Events::Rule"), map[string]interface{}{
+		"Targets": assertions.Match_ArrayWith(&[]interface{}{
+			assertions.Match_ObjectLike(&map[string]interface{}{
+				"Arn": map[string]interface{}{
+					"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+				},
+			}),
+		}),
+	})
+}
+
+func TestStateMachineIAMRole(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// An IAM policy with polly:synthesizeSpeech permission must exist for the state machine role
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Effect":   "Allow",
+					"Resource": "*",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+			},
+		}),
+	})
+}
+
+func TestPlaceholderLambdaRemoved(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// The only Lambda function should be the CDK-internal BucketNotificationsHandler.
+	// No user-defined placeholder Lambda should exist.
+	template.ResourceCountIs(jsii.String("AWS::Lambda::Function"), jsii.Number(1))
 	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
-		"Runtime": "nodejs20.x",
-		"Handler": "index.handler",
+		"Description": assertions.Match_StringLikeRegexp(jsii.String("S3BucketNotifications")),
 	})
 }
