@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Add Step Functions state machine with Polly integration, wire EventBridge target, following strict TDD (tests first, then implementation). Remove placeholder Lambda and replace with state machine.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Write failing tests in cdk-base_test.go (BEFORE any implementation). Add the following test functions:\n  - TestStateMachineExists: Verify AWS::StepFunctions::StateMachine resource exists in the template.\n  - TestStateMachineDefinitionContainsPollyTask: Verify the state machine DefinitionString contains a Task state that calls polly:synthesizeSpeech (check the DefinitionString property contains the expected states).\n  - TestStateMachineHasLogging: Verify the state machine has LoggingConfiguration with level ALL and a CloudWatch Logs destination.\n  - TestEventBridgeRuleTargetsStateMachine: Verify the EventBridge rule targets a Step Functions state machine (target Arn references the state machine). Use assertions.Match_ObjectLike and Match_AnyValue as needed.\n  - TestStateMachineIAMRole: Verify an IAM role exists with polly:SynthesizeSpeech permission in its policy statements.\n  - Remove or update TestPlaceholderLambdaExists since the Lambda will be removed.\n  All tests should use the same pattern as existing tests: defer jsii.Close(), create app, call NewCdkBaseStack, use assertions.Template_FromStack.",
     "Step 2 - Run 'go test -v ./...' to confirm the new tests FAIL (TDD red phase). The tests must fail because the implementation does not exist yet. If tests pass without implementation, they are wrong and need to be fixed.",
@@ -27,5 +27,5 @@
     "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && GOPROXY=direct GONOSUMCHECK=* cdk synth"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "The CDK S3 bucket with EventBridge notifications creates an internal BucketNotificationsHandler Lambda function (Custom::S3BucketNotifications). The TestPlaceholderLambdaRemoved test was updated to expect exactly 1 Lambda (the CDK-internal one) rather than 0, and asserts its description matches S3BucketNotifications."
 }
