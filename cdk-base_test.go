@@ -140,9 +140,17 @@ func TestStateMachineDefinitionContainsPollyTask(t *testing.T) {
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// The state machine must have a DefinitionString (confirming state machine is defined)
+	// The state machine DefinitionString is rendered as Fn::Join containing the Polly
+	// task resource ARN. Verify the definition includes "polly:synthesizeSpeech" to
+	// confirm the Polly integration is wired in.
 	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
-		"DefinitionString": assertions.Match_AnyValue(),
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("polly:synthesizeSpeech")),
+				}),
+			}),
+		},
 	})
 }
 
@@ -189,13 +197,15 @@ func TestStateMachineIAMRole(t *testing.T) {
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// An IAM policy with polly:synthesizeSpeech permission must exist for the state machine role
+	// An IAM policy with polly:synthesizeSpeech permission must exist for the state machine role.
+	// CDK may render individual statements per action or merge them; match the Polly action
+	// as a string within the Statement array to cover both cases.
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
 			"Statement": assertions.Match_ArrayWith(&[]interface{}{
 				assertions.Match_ObjectLike(&map[string]interface{}{
-					"Effect":   "Allow",
-					"Resource": "*",
+					"Action": "polly:synthesizeSpeech",
+					"Effect": "Allow",
 				}),
 			}),
 		},

@@ -27,5 +27,5 @@
     "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && GOPROXY=direct GONOSUMCHECK=* cdk synth"
   ],
   "blocked_reason": null,
-  "findings": "The CDK S3 bucket with EventBridge notifications creates an internal BucketNotificationsHandler Lambda function (Custom::S3BucketNotifications). The TestPlaceholderLambdaRemoved test was updated to expect exactly 1 Lambda (the CDK-internal one) rather than 0, and asserts its description matches S3BucketNotifications."
+  "findings": "The CDK S3 bucket with EventBridge notifications creates an internal BucketNotificationsHandler Lambda function (Custom::S3BucketNotifications). The TestPlaceholderLambdaRemoved test was updated to expect exactly 1 Lambda (the CDK-internal one) rather than 0, and asserts its description matches S3BucketNotifications. Review fixes applied: (1) TestStateMachineDefinitionContainsPollyTask now verifies DefinitionString Fn::Join contains 'polly:synthesizeSpeech' instead of Match_AnyValue. (2) TestStateMachineIAMRole now asserts Action is 'polly:synthesizeSpeech' instead of only checking Effect/Resource. (3) Added comment explaining Standard vs Express state machine type decision. Note: CDK Go assertions library renders the merged IAM policy statement as individual string actions, so matching Action as a string works correctly."
 }

@@ -58,6 +58,13 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	})
 
 	// Step Functions State Machine
+	// Using Standard (default) type rather than Express. While Express is the eventual
+	// target for high-throughput short-duration audio processing, Standard is appropriate
+	// for the current skeleton because:
+	// - Express has a 5-minute max execution duration
+	// - Express provides at-least-once (not exactly-once) semantics
+	// - Express has no execution history API (relies solely on CloudWatch Logs)
+	// Switch to Express once the pipeline is proven and idempotency is handled.
 	stateMachine := awsstepfunctions.NewStateMachine(stack, jsii.String("SleepAudioPipelineStateMachine"), &awsstepfunctions.StateMachineProps{
 		DefinitionBody: awsstepfunctions.DefinitionBody_FromChainable(pollyTask),
 		Logs: &awsstepfunctions.LogOptions{
