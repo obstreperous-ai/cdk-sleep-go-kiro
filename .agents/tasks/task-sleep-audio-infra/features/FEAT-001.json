@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Implement S3 Input/Output buckets and EventBridge rule with TDD approach: write failing tests first in cdk-base_test.go, then implement the minimal CDK code in cdk-base.go to make them pass, then update ARCHITECTURE.md",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Write failing tests in cdk-base_test.go: Add test functions that use assertions.Template_FromStack to verify: (a) An S3 bucket 'SleepAudioInputBucket' exists with encryption (SSE-KMS or S3-managed), versioning enabled, and BlockPublicAccess. (b) An S3 bucket 'SleepAudioOutputBucket' exists with encryption and versioning enabled. (c) EventBridge notifications are enabled on the input bucket. (d) An EventBridge rule exists that matches Object Created events from the input bucket. (e) The EventBridge rule has a target (stub/placeholder). Use the pattern from the existing TestCdkBaseStack test. Import needed packages like awss3, awsevents. Make sure the test compiles but fails (resources don't exist yet).",
+    "Step 2 - Implement the minimal CDK code in cdk-base.go to make all tests pass: (a) Import awss3, awsevents, awseventstargets, and awslambda packages. (b) Create the Input S3 bucket with: BucketName not hardcoded (use CDK-generated), Encryption set to S3_MANAGED or KMS, Versioned: true, BlockPublicAccess: BlockAll, EventBridgeEnabled: true, RemovalPolicy: DESTROY (for dev). (c) Create the Output S3 bucket with: Encryption set to S3_MANAGED or KMS, Versioned: true, BlockPublicAccess: BlockAll, RemovalPolicy: DESTROY. (d) Create an EventBridge Rule that matches: source=['aws.s3'], detailType=['Object Created'], detail with bucket name matching the input bucket. (e) Add a placeholder target - create a minimal Lambda function (inline code, noop handler) as the rule target. This is a stub that will be replaced by Step Functions in a future issue. (f) Ensure proper IAM permissions are configured (CDK L2 constructs handle this automatically for events->lambda).",
+    "Step 3 - Run tests: Execute 'NODE_OPTIONS=\"\" GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK=\"*\" go test -v ./...' and confirm all tests pass.",
+    "Step 4 - Run cdk synth: Execute 'NODE_OPTIONS=\"\" GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK=\"*\" npx cdk synth' and confirm it succeeds without errors.",
+    "Step 5 - Update ARCHITECTURE.md: Update the System Diagram mermaid section to highlight that the S3 Input Bucket, S3 Output Bucket, and EventBridge Rule are now implemented (vs planned). Add a new section '## Implemented Components' after the System Diagram that lists: (1) S3 Input Bucket with encryption, versioning, EventBridge notifications enabled; (2) S3 Output Bucket with encryption, versioning; (3) EventBridge Rule matching Object Created events from input bucket with placeholder Lambda target. Keep the existing full architecture diagram intact but add annotations or a separate 'Current State' subsection showing what is deployed now vs what is planned.",
+    "Step 6 - Update the existing test TestCdkBaseStack: The existing test asserts 0 SQS queues. Update or remove it since it is no longer meaningful with the new resources in the stack. You can fold it into the new tests or keep it as a separate simple synthesis check."
+  ],
+  "acceptance_criteria": [
+    "Running 'go test -v ./...' passes all tests including new assertions for S3 buckets and EventBridge rule",
+    "Running 'cdk synth' succeeds without errors",
+    "cdk-base_test.go contains tests that verify: two S3 buckets with encryption and versioning, EventBridge rule with correct event pattern, and a target on the rule",
+    "cdk-base.go creates both S3 buckets with encryption (S3-managed or KMS), versioning, block public access, and EventBridge notifications on input bucket",
+    "cdk-base.go creates an EventBridge rule matching Object Created events from the input bucket",
+    "cdk-base.go adds a placeholder target (stub Lambda) to the EventBridge rule",
+    "ARCHITECTURE.md is updated to reflect the implemented components"
+  ],
+  "verification": [
+    "NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK='*' go test -v ./...",
+    "NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK='*' npx cdk synth"
+  ],
+  "blocked_reason": null,
+  "findings": "CDK synthesizes EventBridge notifications for S3 buckets via Custom::S3BucketNotifications resource (not a direct property on AWS::S3::Bucket). Tests must use template.HasResourceProperties with Custom::S3BucketNotifications type to verify EventBridge is enabled. The 'Runtime process exited abnormally: waitid: no child processes' message in test output is cosmetic noise from jsii runtime cleanup and does not affect test results. Review follow-up: upgraded Lambda to NODEJS_20_X, strengthened EventBridge rule test to assert detail.bucket.name filter, and changed BlockPublicAccess test to AllResourcesProperties to verify both buckets."
+}
