@@ -9,6 +9,6 @@
     "tests": "pass",
     "test_quality": "pass",
     "docker_build": "skipped",
-    "summary": "All 12 tests pass. cdk synth succeeds. State machine with Polly task synthesizes correctly. EventBridge rule targets the state machine. IAM permissions are scoped. Logging and tracing enabled."
+    "summary": "All 12 tests pass with strengthened assertions (verifying polly:synthesizeSpeech in DefinitionString and IAM action). cdk synth succeeds. Review issues addressed."
   }
 }
