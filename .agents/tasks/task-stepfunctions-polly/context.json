@@ -1,0 +1,23 @@
+{
+  "project_type": "Go CDK infrastructure project (AWS CDK in Go)",
+  "language": "Go",
+  "build_system": "go mod + cdk synth (cdk CLI installed globally via npm)",
+  "test_framework": "Go standard testing package with CDK assertions (github.com/aws/aws-cdk-go/awscdk/v2/assertions)",
+  "build_command": "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && GOPROXY=direct GONOSUMCHECK=* cdk synth",
+  "test_command": "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && go test -v ./...",
+  "verification_instructions": "1. Run go test -v ./... and confirm all tests pass. 2. Run cdk synth and confirm it completes without errors.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "1. Ensure Go 1.25+ is available. 2. Ensure Node.js 22 is available. 3. npm install -g aws-cdk. 4. GOPROXY=direct GONOSUMCHECK=* go mod download. 5. Run go test -v ./... to confirm baseline.",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode - can install Go modules and npm packages. Must use 'unset NODE_OPTIONS' before running cdk/node commands. Must set GOPROXY=direct GONOSUMCHECK=* for go mod download.",
+  "contribution_requirements": "Strict TDD: write failing tests first, then minimal code. Keep ARCHITECTURE.md and Mermaid diagram in sync. Conventional commits. Run go test ./... and cdk synth before pushing.",
+  "key_patterns": "Single-file CDK stack (cdk-base.go) with NewCdkBaseStack function. Single test file (cdk-base_test.go) using assertions.Template_FromStack. L2 constructs used throughout. Package is 'main'. All resources created in NewCdkBaseStack. Tests use jsii.Close() defer pattern.",
+  "relevant_files": [
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "ARCHITECTURE.md",
+    "go.mod",
+    "CONTRIBUTING.md",
+    ".github/AGENT_GUIDELINES.md"
+  ],
+  "directory_structure": "Flat structure - all Go code at root level. cdk-base.go is the main CDK app. cdk-base_test.go is the test file. ARCHITECTURE.md documents the system."
+}

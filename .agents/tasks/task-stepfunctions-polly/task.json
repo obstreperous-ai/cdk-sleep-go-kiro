@@ -1,0 +1,14 @@
+{
+  "task_id": "task-stepfunctions-polly",
+  "task_description": "Replace placeholder Lambda with a Step Functions state machine that includes an Amazon Polly CallAwsService task. Wire the EventBridge rule to target the state machine. Follow strict TDD. Update ARCHITECTURE.md.",
+  "status": "completed",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "All 12 tests pass with strengthened assertions (verifying polly:synthesizeSpeech in DefinitionString and IAM action). cdk synth succeeds. Review issues addressed."
+  }
+}

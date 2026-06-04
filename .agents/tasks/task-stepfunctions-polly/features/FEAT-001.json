@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Add Step Functions state machine with Polly integration, wire EventBridge target, following strict TDD (tests first, then implementation). Remove placeholder Lambda and replace with state machine.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Write failing tests in cdk-base_test.go (BEFORE any implementation). Add the following test functions:\n  - TestStateMachineExists: Verify AWS::StepFunctions::StateMachine resource exists in the template.\n  - TestStateMachineDefinitionContainsPollyTask: Verify the state machine DefinitionString contains a Task state that calls polly:synthesizeSpeech (check the DefinitionString property contains the expected states).\n  - TestStateMachineHasLogging: Verify the state machine has LoggingConfiguration with level ALL and a CloudWatch Logs destination.\n  - TestEventBridgeRuleTargetsStateMachine: Verify the EventBridge rule targets a Step Functions state machine (target Arn references the state machine). Use assertions.Match_ObjectLike and Match_AnyValue as needed.\n  - TestStateMachineIAMRole: Verify an IAM role exists with polly:SynthesizeSpeech permission in its policy statements.\n  - Remove or update TestPlaceholderLambdaExists since the Lambda will be removed.\n  All tests should use the same pattern as existing tests: defer jsii.Close(), create app, call NewCdkBaseStack, use assertions.Template_FromStack.",
+    "Step 2 - Run 'go test -v ./...' to confirm the new tests FAIL (TDD red phase). The tests must fail because the implementation does not exist yet. If tests pass without implementation, they are wrong and need to be fixed.",
+    "Step 3 - Implement the Step Functions state machine in cdk-base.go:\n  - Remove the placeholder Lambda function and its awslambda import.\n  - Add imports: awsstepfunctions, awsstepfunctionstasks, awslogs.\n  - Create a CloudWatch Log Group for state machine logging: awslogs.NewLogGroup with RemovalPolicy DESTROY.\n  - Create a CallAwsService task for Polly: tasks.NewCallAwsService(stack, 'PollyTask', &CallAwsServiceProps{Service: 'polly', Action: 'synthesizeSpeech', Parameters: map with Text/OutputFormat/VoiceId using placeholder values or JsonPath references, IamResources: ['*']}).\n  - Create the state machine definition chain: pollyTask (single task, Start -> PollyTask -> End).\n  - Create the StateMachine: sfn.NewStateMachine(stack, 'SleepAudioPipelineStateMachine', &StateMachineProps{DefinitionBody: sfn.DefinitionBody_FromChainable(pollyTask), Logs: &LogOptions{Destination: logGroup, Level: LogLevel_ALL, IncludeExecutionData: true}, TracingEnabled: true}).\n  - Update the EventBridge rule target: replace awseventstargets.NewLambdaFunction with awseventstargets.NewSfnStateMachine(stateMachine, nil) to wire the rule to start the state machine execution.",
+    "Step 4 - Run 'go test -v ./...' to confirm all tests pass (TDD green phase).",
+    "Step 5 - Run 'unset NODE_OPTIONS && GOPROXY=direct GONOSUMCHECK=* cdk synth' to confirm synthesis succeeds.",
+    "Step 6 - Update ARCHITECTURE.md:\n  - In the 'Implemented Components' table, remove the Placeholder Lambda row and add rows for: Step Functions State Machine (with Polly task), CloudWatch Log Group (for state machine logs).\n  - Update the 'Current State Diagram' Mermaid chart to show: S3 Input Bucket -> EventBridge Rule -> Step Functions State Machine -> Polly Task (instead of Placeholder Lambda).\n  - Add a brief 'Orchestration Layer' section describing the state machine skeleton and Polly integration."
+  ],
+  "acceptance_criteria": [
+    "Running 'go test -v ./...' passes all tests including new state machine tests",
+    "Running 'cdk synth' succeeds without errors",
+    "The synthesized template contains an AWS::StepFunctions::StateMachine resource",
+    "The state machine definition includes a polly:synthesizeSpeech task",
+    "The EventBridge rule target is the state machine (not a Lambda)",
+    "The state machine has CloudWatch Logs logging enabled at ALL level",
+    "An IAM policy granting polly:SynthesizeSpeech exists for the state machine role",
+    "The placeholder Lambda no longer exists in the stack",
+    "ARCHITECTURE.md Implemented Components section and Current State Diagram reflect the state machine"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && go test -v ./...",
+    "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && GOPROXY=direct GONOSUMCHECK=* cdk synth"
+  ],
+  "blocked_reason": null,
+  "findings": "The CDK S3 bucket with EventBridge notifications creates an internal BucketNotificationsHandler Lambda function (Custom::S3BucketNotifications). The TestPlaceholderLambdaRemoved test was updated to expect exactly 1 Lambda (the CDK-internal one) rather than 0, and asserts its description matches S3BucketNotifications. Review fixes applied: (1) TestStateMachineDefinitionContainsPollyTask now verifies DefinitionString Fn::Join contains 'polly:synthesizeSpeech' instead of Match_AnyValue. (2) TestStateMachineIAMRole now asserts Action is 'polly:synthesizeSpeech' instead of only checking Effect/Resource. (3) Added comment explaining Standard vs Express state machine type decision. Note: CDK Go assertions library renders the merged IAM policy statement as individual string actions, so matching Action as a string works correctly."
+}
