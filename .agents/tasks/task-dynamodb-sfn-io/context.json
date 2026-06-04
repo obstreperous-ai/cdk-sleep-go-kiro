@@ -1,0 +1,24 @@
+{
+  "project_type": "Go AWS CDK infrastructure-as-code project for an event-driven sleep audio pipeline",
+  "language": "Go",
+  "build_system": "go mod + cdk synth (npm-installed aws-cdk CLI)",
+  "test_framework": "Go testing package with CDK assertions (github.com/aws/aws-cdk-go/awscdk/v2/assertions)",
+  "build_command": "cd /projects/sandbox/cdk-sleep-go-kiro && cdk synth",
+  "test_command": "cd /projects/sandbox/cdk-sleep-go-kiro && go test -v ./...",
+  "verification_instructions": "1. Run 'go test -v ./...' - all tests must pass. 2. Run 'cdk synth' - must succeed without errors.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "go mod download && npm install -g aws-cdk (already available in sandbox)",
+  "environment_constraints": "COMMON_DEPENDENCIES network - allowlisted package registries available. Go 1.25.1, Node 22, npm available. No Docker daemon needed for this task.",
+  "contribution_requirements": "Strict TDD: write failing tests first, then minimal code. Conventional commits. Update ARCHITECTURE.md and Mermaid diagram after changes. Run 'go test ./...' and 'cdk synth' before pushing.",
+  "key_patterns": "Single-file CDK stack in cdk-base.go with NewCdkBaseStack function. Tests in cdk-base_test.go using CDK assertions (Template_FromStack, HasResourceProperties, Match_*). L2 constructs throughout. Uses jsii.String/jsii.Bool/jsii.Number for pointers. All resources are in CdkBaseStack.",
+  "relevant_files": [
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "ARCHITECTURE.md",
+    "go.mod",
+    "go.sum",
+    ".github/AGENT_GUIDELINES.md",
+    "CONTRIBUTING.md"
+  ],
+  "directory_structure": "Flat structure - all Go source and tests at repo root. .agents/tasks/ for task state. .github/workflows/ci.yml for CI. .devcontainer/ for dev environment."
+}
