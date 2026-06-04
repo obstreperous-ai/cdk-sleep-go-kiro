@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Add DynamoDB table and Step Functions I/O handling following strict TDD. Write failing tests first for the DynamoDB table (SleepAudioMetadataTable) and state machine DynamoDB tasks, then implement minimal code to pass them, then update ARCHITECTURE.md.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Add failing tests to cdk-base_test.go: (a) TestDynamoDBTableExists - verify AWS::DynamoDB::Table resource exists with partition key 'audioId' (S), on-demand billing (PAY_PER_REQUEST), server-side encryption enabled, and point-in-time recovery enabled. (b) TestStateMachineDefinitionContainsDynamoDBPutItem - verify the state machine definition includes a DynamoDB PutItem task (look for 'dynamodb:putItem' or 'arn:aws:states:::dynamodb:putItem' in the DefinitionString). (c) TestStateMachineDefinitionContainsDynamoDBUpdateItem - verify the state machine definition includes a DynamoDB UpdateItem task for status updates. (d) TestStateMachineHasDynamoDBPermissions - verify an IAM policy exists granting dynamodb:PutItem and dynamodb:UpdateItem on the table, attached to the state machine role. (e) TestStateMachineDefinitionHasErrorHandling - verify the state machine definition includes Catch or error handling states (e.g., 'Catch' keyword in definition string). Run tests - they should FAIL since the implementation does not exist yet.",
     "Step 2 - Implement the DynamoDB table in cdk-base.go: Add import for 'github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb'. Create a new DynamoDB table using awsdynamodb.NewTable with: TableName not hardcoded (let CDK generate), PartitionKey with name 'audioId' and type STRING, BillingMode PAY_PER_REQUEST, Encryption DEFAULT (AWS-managed), PointInTimeRecovery true, RemovalPolicy DESTROY (dev skeleton).",
@@ -27,5 +27,5 @@
     "cd /projects/sandbox/cdk-sleep-go-kiro && cdk synth"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Environment required NODE_OPTIONS unset (references missing proxy-bootstrap.js). Go module download required GOPROXY=direct since storage.googleapis.com was blocked in COMMON_DEPENDENCIES mode. Deprecated warning for pointInTimeRecovery (should use pointInTimeRecoverySpecification) but test still passes. go mod tidy fails due to gopkg.in being blocked but go build and go test work fine with existing go.sum."
 }
