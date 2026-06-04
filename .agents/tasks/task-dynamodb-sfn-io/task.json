@@ -2,6 +2,13 @@
   "task_id": "task-dynamodb-sfn-io",
   "task_description": "Add DynamoDB table (SleepAudioMetadataTable) for storing audio pipeline metadata and extend the Step Functions state machine with basic input/output handling (PutItem on start, UpdateItem on completion/failure). Follow strict TDD: tests first, then implementation, then ARCHITECTURE.md update.",
   "status": "in_progress",
-  "feature_order": ["FEAT-001"],
-  "blocked_reason": null
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "All 17 tests pass including 5 new DynamoDB/error-handling tests. cdk synth succeeds. Tests verify actual resource properties (table key schema, billing mode, SSE, PITR), state machine definition content (dynamodb:putItem, dynamodb:updateItem, Catch), and IAM policy statements - all would fail if implementation were reverted."
+  }
 }

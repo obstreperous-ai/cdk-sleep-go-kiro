@@ -59,6 +59,9 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	})
 
 	// Step Functions DynamoDB PutItem task - write initial PROCESSING record
+	// ConditionExpression prevents overwriting in-flight records: only allows
+	// the PutItem if no record exists for this audioId, or the existing record
+	// has already reached a terminal state (COMPLETED or FAILED).
 	writeInitialRecord := awsstepfunctionstasks.NewDynamoPutItem(stack, jsii.String("WriteInitialRecord"), &awsstepfunctionstasks.DynamoPutItemProps{
 		Table: metadataTable,
 		Item: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
@@ -67,6 +70,14 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 			"bucket":    awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.bucket.name"))),
 			"objectKey": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key"))),
 			"createdAt": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$.time"))),
+		},
+		ConditionExpression: jsii.String("attribute_not_exists(audioId) OR #s IN (:completed, :failed)"),
+		ExpressionAttributeNames: &map[string]*string{
+			"#s": jsii.String("status"),
+		},
+		ExpressionAttributeValues: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
+			":completed": awsstepfunctionstasks.DynamoAttributeValue_FromString(jsii.String("COMPLETED")),
+			":failed":    awsstepfunctionstasks.DynamoAttributeValue_FromString(jsii.String("FAILED")),
 		},
 		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
 	})
@@ -85,6 +96,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	})
 
 	// Step Functions DynamoDB UpdateItem task - mark as COMPLETED
+	// Uses $$.State.EnteredTime for updatedAt to record actual completion time
 	markCompleted := awsstepfunctionstasks.NewDynamoUpdateItem(stack, jsii.String("MarkCompleted"), &awsstepfunctionstasks.DynamoUpdateItemProps{
 		Table: metadataTable,
 		Key: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
@@ -92,7 +104,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 		ExpressionAttributeValues: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
 			":status":    awsstepfunctionstasks.DynamoAttributeValue_FromString(jsii.String("COMPLETED")),
-			":updatedAt": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$.time"))),
+			":updatedAt": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$$.State.EnteredTime"))),
 		},
 		UpdateExpression: jsii.String("SET #s = :status, updatedAt = :updatedAt"),
 		ExpressionAttributeNames: &map[string]*string{
@@ -101,7 +113,16 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
 	})
 
+	// Add retry for transient DynamoDB errors on MarkCompleted
+	markCompleted.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:       &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:     awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts:  jsii.Number(3),
+		BackoffRate:  jsii.Number(2.0),
+	})
+
 	// Step Functions DynamoDB UpdateItem task - mark as FAILED (error handler)
+	// Uses $$.State.EnteredTime for updatedAt to record actual failure time
 	markFailed := awsstepfunctionstasks.NewDynamoUpdateItem(stack, jsii.String("MarkFailed"), &awsstepfunctionstasks.DynamoUpdateItemProps{
 		Table: metadataTable,
 		Key: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
@@ -109,13 +130,21 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 		ExpressionAttributeValues: &map[string]awsstepfunctionstasks.DynamoAttributeValue{
 			":status":    awsstepfunctionstasks.DynamoAttributeValue_FromString(jsii.String("FAILED")),
-			":updatedAt": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$.time"))),
+			":updatedAt": awsstepfunctionstasks.DynamoAttributeValue_FromString(awsstepfunctions.JsonPath_StringAt(jsii.String("$$.State.EnteredTime"))),
 		},
 		UpdateExpression: jsii.String("SET #s = :status, updatedAt = :updatedAt"),
 		ExpressionAttributeNames: &map[string]*string{
 			"#s": jsii.String("status"),
 		},
 		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
+	})
+
+	// Add retry for transient DynamoDB errors on MarkFailed
+	markFailed.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:       &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:     awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts:  jsii.Number(3),
+		BackoffRate:  jsii.Number(2.0),
 	})
 
 	// Add error handling: Polly task catches all errors and transitions to MarkFailed

@@ -1,0 +1,25 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Address review findings: fix updatedAt timestamp, add retry on terminal states, add condition expression comment for PutItem collision prevention.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Fix updatedAt in MarkCompleted and MarkFailed to use $$.State.EnteredTime instead of $.time",
+    "Step 2 - Add retry configuration (Interval 2s, MaxAttempts 3, BackoffRate 2.0, Errors States.ALL) on both MarkCompleted and MarkFailed tasks",
+    "Step 3 - Investigate if CDK L2 DynamoPutItem supports ConditionExpression; if not, add a code comment documenting the limitation",
+    "Step 4 - Run tests and cdk synth to verify"
+  ],
+  "acceptance_criteria": [
+    "go test -v ./... passes",
+    "cdk synth succeeds without errors",
+    "MarkCompleted and MarkFailed use $$.State.EnteredTime for updatedAt",
+    "MarkCompleted and MarkFailed have retry configuration",
+    "PutItem collision limitation is documented if CDK does not support ConditionExpression"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro && NODE_OPTIONS='' go test -v ./...",
+    "cd /projects/sandbox/cdk-sleep-go-kiro && NODE_OPTIONS='' cdk synth"
+  ],
+  "blocked_reason": null,
+  "findings": "All 3 review issues addressed: (1) updatedAt uses $$.State.EnteredTime for actual completion/failure time, (2) AddRetry with States.ALL, interval 2s, maxAttempts 3, backoffRate 2.0 added to both MarkCompleted and MarkFailed, (3) CDK L2 DynamoPutItem does support ConditionExpression - added conditional write to prevent overwriting in-flight records."
+}
