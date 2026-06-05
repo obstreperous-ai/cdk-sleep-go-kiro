@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Following strict TDD, add SNS topics (Completed and Failed) and wire SNS Publish tasks into the Step Functions state machine success and failure paths. Write failing tests first, then implement minimal code to pass them. Update ARCHITECTURE.md.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "STEP 1 - Write failing tests in cdk-base_test.go (BEFORE any implementation). Add these test functions: (a) TestSNSTopicsExist - verify exactly 2 AWS::SNS::Topic resources exist. (b) TestSNSTopicsHaveEncryption - verify SNS topics have KmsMasterKeyId set (use aws/kms alias/aws/sns or similar). (c) TestStateMachineDefinitionContainsSNSPublish - verify the state machine definition contains 'sns:Publish' indicating SNS publish tasks are wired in. (d) TestStateMachineHasSNSPublishPermissions - verify IAM policy grants 'sns:Publish' to the state machine role. (e) TestStateMachineDefinitionHasCompletedNotification - verify the state machine definition contains the string 'NotifyCompleted' or 'SleepAudioPipelineCompleted' to confirm the success notification path exists. (f) TestStateMachineDefinitionHasFailedNotification - verify the state machine definition contains 'NotifyFailed' or 'SleepAudioPipelineFailed' to confirm the failure notification path exists.",
     "STEP 2 - Run 'go test -v ./...' to confirm the new tests FAIL (since no SNS resources exist yet). This validates TDD red phase.",

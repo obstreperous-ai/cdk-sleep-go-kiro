@@ -157,6 +157,8 @@ The following components are deployed in the current CDK stack:
 | **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> Polly synthesizeSpeech -> UpdateItem (COMPLETED), with Catch on Polly -> UpdateItem (FAILED); logging at ALL level with execution data; X-Ray tracing enabled |
 | **DynamoDB Table (SleepAudioMetadataTable)** | Deployed | Partition key: `audioId` (S), on-demand billing (PAY_PER_REQUEST), AWS-managed encryption (SSE), point-in-time recovery enabled, removal policy: DESTROY |
 | **CloudWatch Log Group** | Deployed | Destination for state machine execution logs; removal policy: DESTROY |
+| **SNS Topic (Completed)** | Deployed | Topic name: SleepAudioPipelineCompleted, encrypted with AWS-managed SNS KMS key (alias/aws/sns) |
+| **SNS Topic (Failed)** | Deployed | Topic name: SleepAudioPipelineFailed, encrypted with AWS-managed SNS KMS key (alias/aws/sns) |
 
 ### Metadata Layer
 
@@ -172,21 +174,31 @@ The table uses on-demand billing (PAY_PER_REQUEST) to handle variable workloads 
 
 ### Orchestration Layer
 
-The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as the orchestration backbone for the audio processing pipeline. It chains three primary tasks with error handling:
+The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as the orchestration backbone for the audio processing pipeline. It chains primary tasks with error handling and notifications:
 
 1. **WriteInitialRecord** (DynamoDB PutItem) - Creates an initial metadata record with `status=PROCESSING`, capturing the audio ID, source bucket, object key, and creation timestamp from the EventBridge event payload.
 2. **PollyTask** (CallAwsService) - Calls Amazon Polly's `synthesizeSpeech` API to generate audio content. This task has a Catch clause for error handling.
 3. **MarkCompleted** (DynamoDB UpdateItem) - Updates the metadata record to `status=COMPLETED` with an `updatedAt` timestamp on successful Polly execution.
+4. **NotifyCompleted** (SNS Publish) - Publishes a success notification to the `SleepAudioPipelineCompleted` SNS topic with the audio ID and status.
 
-**Error Handling:** If the Polly task fails (any error), the Catch clause transitions execution to the **MarkFailed** state (DynamoDB UpdateItem), which sets `status=FAILED` and records the `updatedAt` timestamp. This ensures the metadata table always reflects the true state of each job.
+**Error Handling:** If the Polly task fails (any error), the Catch clause transitions execution to the **MarkFailed** state (DynamoDB UpdateItem), which sets `status=FAILED` and records the `updatedAt` timestamp. After marking the failure, execution proceeds to **NotifyFailed** (SNS Publish), which publishes a failure notification to the `SleepAudioPipelineFailed` SNS topic with the audio ID, status, and error details. This ensures the metadata table always reflects the true state of each job and downstream consumers are notified of both outcomes.
 
 The state machine is configured with:
 
 - **CloudWatch Logs** at `ALL` level with execution data included, enabling full visibility into each execution.
 - **X-Ray tracing** enabled for distributed tracing across service boundaries.
-- **IAM policies** granting `polly:SynthesizeSpeech`, `dynamodb:PutItem`, and `dynamodb:UpdateItem` permissions scoped appropriately.
+- **IAM policies** granting `polly:SynthesizeSpeech`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, and `sns:Publish` permissions scoped appropriately.
 
 The EventBridge rule triggers the state machine on every S3 Object Created event from the input bucket, passing the full event payload as execution input.
+
+### Notification Layer
+
+The pipeline uses Amazon SNS to notify downstream consumers of processing outcomes. Two encrypted topics provide distinct channels for success and failure events:
+
+- **SleepAudioPipelineCompleted** - Receives a message when the pipeline finishes successfully, containing the audio ID and a `COMPLETED` status. Subscribers can use this to trigger delivery workflows, update UI state, or feed analytics.
+- **SleepAudioPipelineFailed** - Receives a message when the pipeline encounters an error, containing the audio ID, a `FAILED` status, and error details from the Step Functions Catch clause. Subscribers can use this for alerting, retry logic, or dead-letter processing.
+
+Both topics are encrypted at rest using the AWS-managed SNS KMS key (`alias/aws/sns`), ensuring messages are protected without requiring custom key management. The state machine role is granted `sns:Publish` permission scoped to these two topic ARNs via `GrantPublish`.
 
 ### Current State Diagram
 
@@ -201,6 +213,8 @@ flowchart TD
     Polly["Polly Task\n(synthesizeSpeech)"]
     MarkCompleted["MarkCompleted\n(DynamoDB UpdateItem)\nstatus=COMPLETED"]
     MarkFailed["MarkFailed\n(DynamoDB UpdateItem)\nstatus=FAILED"]
+    SNSOk["SNS: PipelineCompleted\n(encrypted)"]
+    SNSErr["SNS: PipelineFailed\n(encrypted)"]
     DDB["DynamoDB\n(SleepAudioMetadataTable)"]
     CWLogs["CloudWatch Log Group\n(execution logs)"]
     S3Out["S3 Output Bucket\n(encrypted, versioned)"]
@@ -214,12 +228,14 @@ flowchart TD
     Polly -->|success| MarkCompleted
     Polly -->|error / Catch| MarkFailed
     MarkCompleted -->|update COMPLETED| DDB
+    MarkCompleted --> SNSOk
     MarkFailed -->|update FAILED| DDB
+    MarkFailed --> SNSErr
     SFN -. logs .-> CWLogs
     Polly -.->|future: write processed audio| S3Out
 ```
 
-> **Next milestone:** Add validation, AI enhancement choice (Polly/Bedrock/passthrough), packaging, and SNS notification states to the state machine.
+> **Next milestone:** Add validation, AI enhancement choice (Polly/Bedrock/passthrough), packaging, and output storage states to the state machine.
 
 ---
 

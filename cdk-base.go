@@ -5,8 +5,10 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awskms"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssns"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsstepfunctions"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsstepfunctionstasks"
 	"github.com/aws/constructs-go/constructs/v10"
@@ -56,6 +58,18 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		Encryption:          awsdynamodb.TableEncryption_AWS_MANAGED,
 		PointInTimeRecovery: jsii.Bool(true),
 		RemovalPolicy:       awscdk.RemovalPolicy_DESTROY,
+	})
+
+	// SNS Topic for pipeline completion notifications (encrypted with AWS-managed SNS KMS key)
+	completedTopic := awssns.NewTopic(stack, jsii.String("SleepAudioPipelineCompleted"), &awssns.TopicProps{
+		TopicName: jsii.String("SleepAudioPipelineCompleted"),
+		MasterKey: awskms.Alias_FromAliasName(stack, jsii.String("SnsKmsKeyCompleted"), jsii.String("alias/aws/sns")),
+	})
+
+	// SNS Topic for pipeline failure notifications (encrypted with AWS-managed SNS KMS key)
+	failedTopic := awssns.NewTopic(stack, jsii.String("SleepAudioPipelineFailed"), &awssns.TopicProps{
+		TopicName: jsii.String("SleepAudioPipelineFailed"),
+		MasterKey: awskms.Alias_FromAliasName(stack, jsii.String("SnsKmsKeyFailed"), jsii.String("alias/aws/sns")),
 	})
 
 	// Step Functions DynamoDB PutItem task - write initial PROCESSING record
@@ -147,13 +161,39 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		BackoffRate:  jsii.Number(2.0),
 	})
 
+	// SNS Publish task - notify on successful pipeline completion
+	notifyCompleted := awsstepfunctionstasks.NewSnsPublish(stack, jsii.String("NotifyCompleted"), &awsstepfunctionstasks.SnsPublishProps{
+		Topic: completedTopic,
+		Message: awsstepfunctions.TaskInput_FromObject(&map[string]interface{}{
+			"status":  "COMPLETED",
+			"audioId": awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+		}),
+		Subject:    jsii.String("Sleep Audio Pipeline - Completed"),
+		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
+	})
+
+	// SNS Publish task - notify on pipeline failure
+	notifyFailed := awsstepfunctionstasks.NewSnsPublish(stack, jsii.String("NotifyFailed"), &awsstepfunctionstasks.SnsPublishProps{
+		Topic: failedTopic,
+		Message: awsstepfunctions.TaskInput_FromObject(&map[string]interface{}{
+			"status":  "FAILED",
+			"audioId": awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+			"error":   awsstepfunctions.JsonPath_StringAt(jsii.String("$.error")),
+		}),
+		Subject:    jsii.String("Sleep Audio Pipeline - Failed"),
+		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
+	})
+
+	// Wire failure path: MarkFailed -> NotifyFailed
+	markFailed.Next(notifyFailed)
+
 	// Add error handling: Polly task catches all errors and transitions to MarkFailed
 	pollyTask.AddCatch(markFailed, &awsstepfunctions.CatchProps{
 		ResultPath: jsii.String("$.error"),
 	})
 
-	// Chain: WriteInitialRecord -> PollyTask -> MarkCompleted
-	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(pollyTask).Next(markCompleted)
+	// Chain: WriteInitialRecord -> PollyTask -> MarkCompleted -> NotifyCompleted
+	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(pollyTask).Next(markCompleted).Next(notifyCompleted)
 
 	// Step Functions State Machine
 	stateMachine := awsstepfunctions.NewStateMachine(stack, jsii.String("SleepAudioPipelineStateMachine"), &awsstepfunctions.StateMachineProps{
@@ -165,6 +205,10 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 		TracingEnabled: jsii.Bool(true),
 	})
+
+	// Grant SNS publish permissions to the state machine
+	completedTopic.GrantPublish(stateMachine)
+	failedTopic.GrantPublish(stateMachine)
 
 	// EventBridge Rule - matches Object Created events from the input bucket
 	rule := awsevents.NewRule(stack, jsii.String("InputBucketObjectCreatedRule"), &awsevents.RuleProps{
