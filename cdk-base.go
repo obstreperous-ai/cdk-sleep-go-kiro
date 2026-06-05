@@ -62,13 +62,11 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// SNS Topic for pipeline completion notifications (encrypted with AWS-managed SNS KMS key)
 	completedTopic := awssns.NewTopic(stack, jsii.String("SleepAudioPipelineCompleted"), &awssns.TopicProps{
-		TopicName: jsii.String("SleepAudioPipelineCompleted"),
 		MasterKey: awskms.Alias_FromAliasName(stack, jsii.String("SnsKmsKeyCompleted"), jsii.String("alias/aws/sns")),
 	})
 
 	// SNS Topic for pipeline failure notifications (encrypted with AWS-managed SNS KMS key)
 	failedTopic := awssns.NewTopic(stack, jsii.String("SleepAudioPipelineFailed"), &awssns.TopicProps{
-		TopicName: jsii.String("SleepAudioPipelineFailed"),
 		MasterKey: awskms.Alias_FromAliasName(stack, jsii.String("SnsKmsKeyFailed"), jsii.String("alias/aws/sns")),
 	})
 
@@ -172,6 +170,24 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
 	})
 
+	// Add retry for transient SNS errors on NotifyCompleted
+	notifyCompleted.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:      &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
+	})
+
+	// Terminal state if completed notification fails after retries
+	notifyCompletedFallback := awsstepfunctions.NewPass(stack, jsii.String("NotifyCompletedFallback"), &awsstepfunctions.PassProps{
+		Result: awsstepfunctions.NewResult(jsii.String("Notification delivery failed but pipeline completed successfully")),
+	})
+
+	// Catch on NotifyCompleted so execution still succeeds if SNS fails
+	notifyCompleted.AddCatch(notifyCompletedFallback, &awsstepfunctions.CatchProps{
+		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
+	})
+
 	// SNS Publish task - notify on pipeline failure
 	notifyFailed := awsstepfunctionstasks.NewSnsPublish(stack, jsii.String("NotifyFailed"), &awsstepfunctionstasks.SnsPublishProps{
 		Topic: failedTopic,
@@ -181,6 +197,24 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 			"error":   awsstepfunctions.JsonPath_StringAt(jsii.String("$.error")),
 		}),
 		Subject:    jsii.String("Sleep Audio Pipeline - Failed"),
+		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
+	})
+
+	// Add retry for transient SNS errors on NotifyFailed
+	notifyFailed.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:      &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
+	})
+
+	// Terminal state if failed notification fails after retries
+	notifyFailedFallback := awsstepfunctions.NewPass(stack, jsii.String("NotifyFailedFallback"), &awsstepfunctions.PassProps{
+		Result: awsstepfunctions.NewResult(jsii.String("Notification delivery failed but pipeline failure was recorded")),
+	})
+
+	// Catch on NotifyFailed so execution still completes if SNS fails
+	notifyFailed.AddCatch(notifyFailedFallback, &awsstepfunctions.CatchProps{
 		ResultPath: awsstepfunctions.JsonPath_DISCARD(),
 	})
 

@@ -467,3 +467,54 @@ func TestStateMachineDefinitionHasFailedNotification(t *testing.T) {
 		},
 	})
 }
+
+func TestMarkCompletedTransitionsToNotifyCompleted(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkCompleted state must transition to NotifyCompleted via Next field
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkCompleted.*"Next".*NotifyCompleted`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestMarkFailedTransitionsToNotifyFailed(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkFailed state must transition to NotifyFailed via Next field
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkFailed.*"Next".*NotifyFailed`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestSNSTopicsHaveNoBoardcodedNames(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// SNS topics must NOT have hardcoded TopicName - let CDK generate unique names
+	template.AllResourcesProperties(jsii.String("AWS::SNS::Topic"), map[string]interface{}{
+		"TopicName": assertions.Match_Absent(),
+	})
+}
