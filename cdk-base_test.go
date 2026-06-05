@@ -231,3 +231,133 @@ func TestPlaceholderLambdaRemoved(t *testing.T) {
 		"Description": assertions.Match_StringLikeRegexp(jsii.String("S3BucketNotifications")),
 	})
 }
+
+func TestDynamoDBTableExists(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// DynamoDB table must exist with audioId partition key (S), PAY_PER_REQUEST billing,
+	// server-side encryption enabled, and point-in-time recovery enabled.
+	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
+		"KeySchema": []interface{}{
+			map[string]interface{}{
+				"AttributeName": "audioId",
+				"KeyType":       "HASH",
+			},
+		},
+		"AttributeDefinitions": []interface{}{
+			map[string]interface{}{
+				"AttributeName": "audioId",
+				"AttributeType": "S",
+			},
+		},
+		"BillingMode": "PAY_PER_REQUEST",
+		"SSESpecification": map[string]interface{}{
+			"SSEEnabled": true,
+		},
+		"PointInTimeRecoverySpecification": map[string]interface{}{
+			"PointInTimeRecoveryEnabled": true,
+		},
+	})
+}
+
+func TestStateMachineDefinitionContainsDynamoDBPutItem(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include a DynamoDB PutItem task
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("dynamodb:putItem")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineDefinitionContainsDynamoDBUpdateItem(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include a DynamoDB UpdateItem task
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("dynamodb:updateItem")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineHasDynamoDBPermissions(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// IAM policy must grant dynamodb:PutItem and dynamodb:UpdateItem to the state machine role
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": "dynamodb:PutItem",
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+			},
+		}),
+	})
+
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": "dynamodb:UpdateItem",
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+			},
+		}),
+	})
+}
+
+func TestStateMachineDefinitionHasErrorHandling(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include error handling (Catch keyword)
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("Catch")),
+				}),
+			}),
+		},
+	})
+}

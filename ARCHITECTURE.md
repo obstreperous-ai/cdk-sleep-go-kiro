@@ -154,16 +154,37 @@ The following components are deployed in the current CDK stack:
 | **S3 Input Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), EventBridge notifications enabled, removal policy: DESTROY |
 | **S3 Output Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), removal policy: DESTROY |
 | **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name; targets the Step Functions state machine |
-| **Step Functions State Machine** | Deployed | Contains a Polly `synthesizeSpeech` CallAwsService task; logging at ALL level with execution data; X-Ray tracing enabled |
+| **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> Polly synthesizeSpeech -> UpdateItem (COMPLETED), with Catch on Polly -> UpdateItem (FAILED); logging at ALL level with execution data; X-Ray tracing enabled |
+| **DynamoDB Table (SleepAudioMetadataTable)** | Deployed | Partition key: `audioId` (S), on-demand billing (PAY_PER_REQUEST), AWS-managed encryption (SSE), point-in-time recovery enabled, removal policy: DESTROY |
 | **CloudWatch Log Group** | Deployed | Destination for state machine execution logs; removal policy: DESTROY |
+
+### Metadata Layer
+
+The **SleepAudioMetadataTable** (DynamoDB) provides durable metadata tracking for every audio processing job in the pipeline. Each record is keyed by `audioId` (the S3 object key) and stores:
+
+- `status` - Current processing state: `PROCESSING`, `COMPLETED`, or `FAILED`
+- `bucket` - Source S3 bucket name
+- `objectKey` - Source S3 object key
+- `createdAt` - Timestamp when processing started
+- `updatedAt` - Timestamp of the last status update
+
+The table uses on-demand billing (PAY_PER_REQUEST) to handle variable workloads without capacity planning. Server-side encryption (AWS-managed) protects data at rest, and point-in-time recovery enables restoration to any second within the last 35 days.
 
 ### Orchestration Layer
 
-The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as the orchestration backbone for the audio processing pipeline. It currently contains a single task that calls Amazon Polly's `synthesizeSpeech` API via the `CallAwsService` integration pattern. The state machine is configured with:
+The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as the orchestration backbone for the audio processing pipeline. It chains three primary tasks with error handling:
+
+1. **WriteInitialRecord** (DynamoDB PutItem) - Creates an initial metadata record with `status=PROCESSING`, capturing the audio ID, source bucket, object key, and creation timestamp from the EventBridge event payload.
+2. **PollyTask** (CallAwsService) - Calls Amazon Polly's `synthesizeSpeech` API to generate audio content. This task has a Catch clause for error handling.
+3. **MarkCompleted** (DynamoDB UpdateItem) - Updates the metadata record to `status=COMPLETED` with an `updatedAt` timestamp on successful Polly execution.
+
+**Error Handling:** If the Polly task fails (any error), the Catch clause transitions execution to the **MarkFailed** state (DynamoDB UpdateItem), which sets `status=FAILED` and records the `updatedAt` timestamp. This ensures the metadata table always reflects the true state of each job.
+
+The state machine is configured with:
 
 - **CloudWatch Logs** at `ALL` level with execution data included, enabling full visibility into each execution.
 - **X-Ray tracing** enabled for distributed tracing across service boundaries.
-- **IAM policy** granting `polly:SynthesizeSpeech` permission scoped to all resources.
+- **IAM policies** granting `polly:SynthesizeSpeech`, `dynamodb:PutItem`, and `dynamodb:UpdateItem` permissions scoped appropriately.
 
 The EventBridge rule triggers the state machine on every S3 Object Created event from the input bucket, passing the full event payload as execution input.
 
@@ -176,19 +197,29 @@ flowchart TD
     S3In["S3 Input Bucket\n(encrypted, versioned,\nEventBridge enabled)"]
     EB["EventBridge Rule\n(Object Created)"]
     SFN["Step Functions\nState Machine"]
+    PutItem["WriteInitialRecord\n(DynamoDB PutItem)\nstatus=PROCESSING"]
     Polly["Polly Task\n(synthesizeSpeech)"]
+    MarkCompleted["MarkCompleted\n(DynamoDB UpdateItem)\nstatus=COMPLETED"]
+    MarkFailed["MarkFailed\n(DynamoDB UpdateItem)\nstatus=FAILED"]
+    DDB["DynamoDB\n(SleepAudioMetadataTable)"]
     CWLogs["CloudWatch Log Group\n(execution logs)"]
     S3Out["S3 Output Bucket\n(encrypted, versioned)"]
 
     Client -->|upload| S3In
     S3In -->|Object Created event| EB
     EB -->|start execution| SFN
-    SFN --> Polly
+    SFN --> PutItem
+    PutItem -->|write PROCESSING| DDB
+    PutItem --> Polly
+    Polly -->|success| MarkCompleted
+    Polly -->|error / Catch| MarkFailed
+    MarkCompleted -->|update COMPLETED| DDB
+    MarkFailed -->|update FAILED| DDB
     SFN -. logs .-> CWLogs
     Polly -.->|future: write processed audio| S3Out
 ```
 
-> **Next milestone:** Add validation, metadata extraction, AI enhancement choice (Polly/Bedrock/passthrough), packaging, and error-handling states to the state machine.
+> **Next milestone:** Add validation, AI enhancement choice (Polly/Bedrock/passthrough), packaging, and SNS notification states to the state machine.
 
 ---
 
