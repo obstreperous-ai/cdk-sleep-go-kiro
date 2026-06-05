@@ -1,0 +1,23 @@
+{
+  "project_type": "AWS CDK Go infrastructure-as-code project for an event-driven sleep audio pipeline",
+  "language": "Go",
+  "build_system": "go build + cdk synth (CDK CLI via Node.js)",
+  "test_framework": "Go testing package with CDK assertions (github.com/aws/aws-cdk-go/awscdk/v2/assertions)",
+  "build_command": "cd /projects/sandbox/cdk-sleep-go-kiro && cdk synth",
+  "test_command": "cd /projects/sandbox/cdk-sleep-go-kiro && go test -v ./...",
+  "verification_instructions": "1. Run 'go test -v ./...' - all tests must pass. 2. Run 'cdk synth' - must synthesize without errors.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "1. cd /projects/sandbox/cdk-sleep-go-kiro. 2. go mod download. 3. npm install -g aws-cdk (if not already installed). 4. go test -v ./... 5. cdk synth",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode - can download Go modules. Go 1.25.1 and Node.js 22 are pre-installed. CDK CLI may need npm install -g aws-cdk.",
+  "contribution_requirements": "Strict TDD: write failing tests FIRST, then minimal implementation. Conventional commits. ARCHITECTURE.md must be updated with any infra changes. Run 'go test ./...' and 'cdk synth' before pushing.",
+  "key_patterns": "Single-file CDK stack (cdk-base.go) with NewCdkBaseStack function. Tests in cdk-base_test.go using assertions.Template_FromStack. Tests use HasResourceProperties, ResourceCountIs, Match_ArrayWith, Match_ObjectLike, Match_StringLikeRegexp. Each test creates its own app/stack/template. L2 constructs preferred. jsii.String() for string pointers. awsstepfunctions.JsonPath_StringAt for Step Functions paths.",
+  "relevant_files": [
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "ARCHITECTURE.md",
+    "go.mod",
+    ".github/AGENT_GUIDELINES.md",
+    "CONTRIBUTING.md"
+  ],
+  "directory_structure": "Flat Go module at root. cdk-base.go has main stack + main(). cdk-base_test.go has all CDK assertion tests. ARCHITECTURE.md has design docs with Mermaid diagrams. .github/workflows/ci.yml for CI."
+}
