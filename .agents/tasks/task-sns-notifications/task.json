@@ -1,0 +1,7 @@
+{
+  "task_id": "task-sns-notifications",
+  "task_description": "Add SNS notifications for pipeline completion and errors. Create encrypted SNS topics and wire SNS Publish tasks into the Step Functions state machine success and failure paths. Follow strict TDD. Update ARCHITECTURE.md.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

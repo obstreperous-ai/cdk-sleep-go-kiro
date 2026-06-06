@@ -361,3 +361,160 @@ func TestStateMachineDefinitionHasErrorHandling(t *testing.T) {
 		},
 	})
 }
+
+func TestSNSTopicsExist(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Exactly 2 SNS topics must exist (Completed and Failed)
+	template.ResourceCountIs(jsii.String("AWS::SNS::Topic"), jsii.Number(2))
+}
+
+func TestSNSTopicsHaveEncryption(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// All SNS topics must have KMS encryption configured
+	template.AllResourcesProperties(jsii.String("AWS::SNS::Topic"), map[string]interface{}{
+		"KmsMasterKeyId": assertions.Match_AnyValue(),
+	})
+}
+
+func TestStateMachineDefinitionContainsSNSPublish(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must contain sns:publish indicating SNS publish tasks
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("sns:publish")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineHasSNSPublishPermissions(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// IAM policy must grant sns:Publish to the state machine role
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": "sns:Publish",
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+			},
+		}),
+	})
+}
+
+func TestStateMachineDefinitionHasCompletedNotification(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must contain NotifyCompleted state name
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("NotifyCompleted")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineDefinitionHasFailedNotification(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must contain NotifyFailed state name
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("NotifyFailed")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestMarkCompletedTransitionsToNotifyCompleted(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkCompleted state must transition to NotifyCompleted via Next field
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkCompleted.*"Next".*NotifyCompleted`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestMarkFailedTransitionsToNotifyFailed(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkFailed state must transition to NotifyFailed via Next field
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkFailed.*"Next".*NotifyFailed`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestSNSTopicsHaveNoBoardcodedNames(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// SNS topics must NOT have hardcoded TopicName - let CDK generate unique names
+	template.AllResourcesProperties(jsii.String("AWS::SNS::Topic"), map[string]interface{}{
+		"TopicName": assertions.Match_Absent(),
+	})
+}

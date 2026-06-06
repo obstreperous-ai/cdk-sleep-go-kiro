@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Following strict TDD, add SNS topics (Completed and Failed) and wire SNS Publish tasks into the Step Functions state machine success and failure paths. Write failing tests first, then implement minimal code to pass them. Update ARCHITECTURE.md.",
+  "status": "completed",
+  "steps": [
+    "STEP 1 - Write failing tests in cdk-base_test.go (BEFORE any implementation). Add these test functions: (a) TestSNSTopicsExist - verify exactly 2 AWS::SNS::Topic resources exist. (b) TestSNSTopicsHaveEncryption - verify SNS topics have KmsMasterKeyId set (use aws/kms alias/aws/sns or similar). (c) TestStateMachineDefinitionContainsSNSPublish - verify the state machine definition contains 'sns:Publish' indicating SNS publish tasks are wired in. (d) TestStateMachineHasSNSPublishPermissions - verify IAM policy grants 'sns:Publish' to the state machine role. (e) TestStateMachineDefinitionHasCompletedNotification - verify the state machine definition contains the string 'NotifyCompleted' or 'SleepAudioPipelineCompleted' to confirm the success notification path exists. (f) TestStateMachineDefinitionHasFailedNotification - verify the state machine definition contains 'NotifyFailed' or 'SleepAudioPipelineFailed' to confirm the failure notification path exists.",
+    "STEP 2 - Run 'go test -v ./...' to confirm the new tests FAIL (since no SNS resources exist yet). This validates TDD red phase.",
+    "STEP 3 - Implement SNS topics in cdk-base.go: (a) Add import for 'github.com/aws/aws-cdk-go/awscdk/v2/awssns'. (b) Create 'SleepAudioPipelineCompleted' SNS topic with awssns.NewTopic, set MasterKey to awscdk KMS alias 'alias/aws/sns' for encryption. (c) Create 'SleepAudioPipelineFailed' SNS topic similarly encrypted.",
+    "STEP 4 - Implement SNS Publish tasks in the Step Functions state machine: (a) Add import for 'github.com/aws/aws-cdk-go/awscdk/v2/awsstepfunctionstasks' (already imported). (b) Create a 'NotifyCompleted' task using awsstepfunctionstasks.NewSnsPublish that publishes to the completed topic. Include a message body with relevant execution context (e.g., audioId from $.detail.object.key, status COMPLETED). Set ResultPath to JsonPath_DISCARD(). (c) Create a 'NotifyFailed' task using awsstepfunctionstasks.NewSnsPublish that publishes to the failed topic. Include a message body with error details (e.g., audioId, status FAILED, error info from $.error). Set ResultPath to JsonPath_DISCARD(). (d) Wire NotifyCompleted AFTER MarkCompleted in the success path: chain becomes WriteInitialRecord -> PollyTask -> MarkCompleted -> NotifyCompleted. (e) Wire NotifyFailed AFTER MarkFailed in the error path: MarkFailed.Next(notifyFailed). (f) Grant the state machine SNS publish permissions - use topic.GrantPublish(stateMachine) for both topics.",
+    "STEP 5 - Run 'go test -v ./...' to confirm ALL tests (existing + new) pass.",
+    "STEP 6 - Run 'cdk synth' to confirm synthesis succeeds.",
+    "STEP 7 - Update ARCHITECTURE.md: (a) In the 'Implemented Components (Current State)' table, add rows for the two SNS topics with their configuration (encrypted with AWS-managed KMS key). (b) In the 'Current State Diagram' Mermaid section, add SNSOk and SNSErr nodes and connect MarkCompleted -> SNSOk and MarkFailed -> SNSErr. (c) Add a subsection 'Notification Layer' describing the SNS notification integration and how the state machine publishes completion/failure notifications. (d) Update the 'Next milestone' note to reflect current state."
+  ],
+  "acceptance_criteria": [
+    "go test -v ./... passes with all existing and new tests green",
+    "cdk synth produces a valid CloudFormation template",
+    "The synthesized template contains exactly 2 AWS::SNS::Topic resources",
+    "Both SNS topics have KMS encryption configured",
+    "The state machine definition includes sns:Publish tasks for both success and failure paths",
+    "IAM policy grants sns:Publish permission scoped to the SNS topic ARNs",
+    "MarkCompleted transitions to NotifyCompleted (success path)",
+    "MarkFailed transitions to NotifyFailed (failure path)",
+    "ARCHITECTURE.md Mermaid diagram shows SNS notification nodes connected to the state machine"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro && go test -v ./...",
+    "cd /projects/sandbox/cdk-sleep-go-kiro && cdk synth"
+  ],
+  "blocked_reason": null,
+  "findings": "TDD workflow successful: 6 new tests written first (red phase confirmed), then implementation made all 23 tests pass (green phase). CDK synthesizes successfully. The state machine definition uses 'sns:publish' (lowercase p) for the resource action in the definition string, while IAM policies use 'sns:Publish' (capital P). Tests adjusted accordingly. markFailed.Next(notifyFailed) must be called BEFORE pollyTask.AddCatch(markFailed) to properly wire the failure path chain."
+}
