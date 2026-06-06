@@ -36,8 +36,11 @@ func handler(ctx context.Context, event Event) (Response, error) {
 }
 
 func main() {
-	// Placeholder: in a real deployment this would use
-	// github.com/aws/aws-lambda-go/lambda to start the handler.
-	// For now, this file serves as the Lambda asset source.
+	// Skeleton: this Lambda is not yet wired to the Lambda runtime API.
+	// In production deployment, replace this body with:
+	//   import "github.com/aws/aws-lambda-go/lambda"
+	//   lambda.Start(handler)
+	// That registers the handler function with the Lambda Runtime API so
+	// the provided.al2023 custom runtime can invoke it on each event.
 	fmt.Println("SleepAudioProcessor Lambda handler")
 }

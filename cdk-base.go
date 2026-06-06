@@ -123,9 +123,15 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	})
 
 	// Step Functions LambdaInvoke task - process audio via SleepAudioProcessor Lambda
+	// Payload extracts flat {audioId, bucket, objectKey} from the EventBridge envelope
 	processAudio := awsstepfunctionstasks.NewLambdaInvoke(stack, jsii.String("ProcessAudio"), &awsstepfunctionstasks.LambdaInvokeProps{
 		LambdaFunction: processorLambda,
-		ResultPath:     jsii.String("$.processorResult"),
+		Payload: awsstepfunctions.TaskInput_FromObject(&map[string]interface{}{
+			"audioId":   awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+			"bucket":    awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.bucket.name")),
+			"objectKey": awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+		}),
+		ResultPath: jsii.String("$.processorResult"),
 	})
 
 	// Step Functions DynamoDB UpdateItem task - mark as COMPLETED
