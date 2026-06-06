@@ -217,18 +217,119 @@ func TestStateMachineIAMRole(t *testing.T) {
 	})
 }
 
-func TestPlaceholderLambdaRemoved(t *testing.T) {
+func TestLambdaFunctionExists(t *testing.T) {
 	defer jsii.Close()
 
 	app := awscdk.NewApp(nil)
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// The only Lambda function should be the CDK-internal BucketNotificationsHandler.
-	// No user-defined placeholder Lambda should exist.
-	template.ResourceCountIs(jsii.String("AWS::Lambda::Function"), jsii.Number(1))
+	// Two Lambda functions: CDK BucketNotificationsHandler + SleepAudioProcessor
+	template.ResourceCountIs(jsii.String("AWS::Lambda::Function"), jsii.Number(2))
+}
+
+func TestLambdaFunctionHasCorrectRuntime(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// SleepAudioProcessor Lambda must use provided.al2023 runtime (Go compiled binary)
 	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
-		"Description": assertions.Match_StringLikeRegexp(jsii.String("S3BucketNotifications")),
+		"Runtime": "provided.al2023",
+		"Handler": "bootstrap",
+	})
+}
+
+func TestLambdaFunctionHasEnvironmentVariables(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda must have TABLE_NAME environment variable referencing the DynamoDB table
+	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
+		"Environment": map[string]interface{}{
+			"Variables": map[string]interface{}{
+				"TABLE_NAME": assertions.Match_AnyValue(),
+			},
+		},
+	})
+}
+
+func TestStateMachineDefinitionContainsLambdaInvoke(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include a Lambda invoke task (arn:aws:states:::lambda:invoke)
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("lambda:invoke")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineHasLambdaInvokePermission(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// IAM policy must grant lambda:InvokeFunction to the state machine role
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": "lambda:InvokeFunction",
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+			},
+		}),
+	})
+}
+
+func TestLambdaHasDynamoDBPermissions(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda execution role must have DynamoDB read/write permissions
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": assertions.Match_ArrayWith(&[]interface{}{
+						"dynamodb:BatchGetItem",
+						"dynamodb:BatchWriteItem",
+						"dynamodb:PutItem",
+						"dynamodb:UpdateItem",
+					}),
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioProcessor")),
+			},
+		}),
 	})
 }
 
