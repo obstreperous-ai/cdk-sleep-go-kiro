@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "docs",
   "description": "Update ARCHITECTURE.md to reflect the complete integrated pipeline with input validation. Refine the Mermaid diagram to show the ValidateInput Choice state, the validation failure path, and the complete end-to-end flow. Add a section describing the validation logic and how invalid inputs are handled.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Step 1 - Update the 'Current State Diagram' Mermaid diagram in ARCHITECTURE.md to include the ValidateInput (Choice) state between WriteInitialRecord and ProcessAudio. Show the branching: valid extensions go to ProcessAudio, invalid extensions go to MarkFailed -> NotifyFailed.",
     "Step 2 - Update the 'Orchestration Layer' section to document the ValidateInput Choice state, explaining what extensions are valid and how invalid files are rejected.",
