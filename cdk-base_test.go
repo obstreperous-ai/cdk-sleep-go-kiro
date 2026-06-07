@@ -619,3 +619,100 @@ func TestSNSTopicsHaveNoBoardcodedNames(t *testing.T) {
 		"TopicName": assertions.Match_Absent(),
 	})
 }
+
+func TestStateMachineDefinitionContainsValidateInput(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include a ValidateInput state
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String("ValidateInput")),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineDefinitionContainsChoiceState(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include a Choice state type for input validation
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`"Type":"Choice"`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineValidationChecksFileExtensions(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must include StringMatches patterns for valid audio extensions
+	extensions := []string{".mp3", ".wav", ".m4a", ".ogg", ".flac"}
+	for _, ext := range extensions {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String("\\*\\" + ext)),
+					}),
+				}),
+			},
+		})
+	}
+}
+
+func TestStateMachineDefinitionContainsValidationErrorPath(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// The Choice state Default (otherwise) must route to MarkFailed,
+	// meaning the definition contains a Default pointing to MarkFailed
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`"Default":"MarkFailed"`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestLambdaFunctionHasOutputBucketEnv(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda must have OUTPUT_BUCKET_NAME environment variable
+	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
+		"Environment": map[string]interface{}{
+			"Variables": map[string]interface{}{
+				"OUTPUT_BUCKET_NAME": assertions.Match_AnyValue(),
+			},
+		},
+	})
+}

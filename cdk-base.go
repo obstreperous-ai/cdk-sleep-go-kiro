@@ -37,7 +37,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	})
 
 	// S3 Output Bucket - stores processed audio artifacts
-	awss3.NewBucket(stack, jsii.String("SleepAudioOutputBucket"), &awss3.BucketProps{
+	outputBucket := awss3.NewBucket(stack, jsii.String("SleepAudioOutputBucket"), &awss3.BucketProps{
 		Encryption:        awss3.BucketEncryption_S3_MANAGED,
 		Versioned:         jsii.Bool(true),
 		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
@@ -78,7 +78,8 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		Handler: jsii.String("bootstrap"),
 		Code:    awslambda.Code_FromAsset(jsii.String("lambda/processor"), nil),
 		Environment: &map[string]*string{
-			"TABLE_NAME": metadataTable.TableName(),
+			"TABLE_NAME":         metadataTable.TableName(),
+			"OUTPUT_BUCKET_NAME": outputBucket.BucketName(),
 		},
 	})
 
@@ -258,8 +259,27 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		ResultPath: jsii.String("$.error"),
 	})
 
-	// Chain: WriteInitialRecord -> ProcessAudio (Lambda) -> PollyTask -> MarkCompleted -> NotifyCompleted
-	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(processAudio).Next(pollyTask).Next(markCompleted).Next(notifyCompleted)
+	// Choice state: ValidateInput - checks file extension before processing
+	validateInput := awsstepfunctions.NewChoice(stack, jsii.String("ValidateInput"), nil)
+
+	// Define valid file extension conditions using StringMatches on $.detail.object.key
+	validMp3 := awsstepfunctions.Condition_StringMatches(jsii.String("$.detail.object.key"), jsii.String("*.mp3"))
+	validWav := awsstepfunctions.Condition_StringMatches(jsii.String("$.detail.object.key"), jsii.String("*.wav"))
+	validM4a := awsstepfunctions.Condition_StringMatches(jsii.String("$.detail.object.key"), jsii.String("*.m4a"))
+	validOgg := awsstepfunctions.Condition_StringMatches(jsii.String("$.detail.object.key"), jsii.String("*.ogg"))
+	validFlac := awsstepfunctions.Condition_StringMatches(jsii.String("$.detail.object.key"), jsii.String("*.flac"))
+
+	// Combine valid conditions with OR
+	validExtension := awsstepfunctions.Condition_Or(validMp3, validWav, validM4a, validOgg, validFlac)
+
+	// Build the success chain after validation: ProcessAudio -> Polly -> MarkCompleted -> NotifyCompleted
+	processAudio.Next(pollyTask).Next(markCompleted).Next(notifyCompleted)
+
+	// Wire the Choice: valid extensions proceed to ProcessAudio, invalid go to MarkFailed
+	validateInput.When(validExtension, processAudio, nil).Otherwise(markFailed)
+
+	// Chain: WriteInitialRecord -> ValidateInput (Choice)
+	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(validateInput)
 
 	// Step Functions State Machine
 	stateMachine := awsstepfunctions.NewStateMachine(stack, jsii.String("SleepAudioPipelineStateMachine"), &awsstepfunctions.StateMachineProps{

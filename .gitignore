@@ -17,3 +17,7 @@
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# Lambda binaries
+lambda/processor/processor
+lambda/processor/bootstrap

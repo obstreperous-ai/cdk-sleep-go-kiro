@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Add input validation to the Step Functions state machine (Choice state checking file extension) and wire the Lambda handler to the AWS Lambda runtime API. Write failing CDK assertion tests first (TDD), then implement the validation Choice state and Lambda runtime wiring.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1 - Write failing tests in cdk-base_test.go: (a) TestStateMachineDefinitionContainsValidateInput - verify the state machine definition includes a 'ValidateInput' state name. (b) TestStateMachineDefinitionContainsChoiceState - verify the definition includes a Choice state type (CDK renders as '\"Type\":\"Choice\"'). (c) TestStateMachineValidationRejectsInvalidExtensions - verify the state machine definition includes string patterns for valid extensions like '.mp3', '.wav', '.m4a', '.ogg', '.flac' to confirm they are checked. (d) TestLambdaFunctionHasOutputBucketEnv - verify Lambda has OUTPUT_BUCKET_NAME environment variable. (e) TestStateMachineDefinitionContainsValidationErrorPath - verify definition contains a 'ValidationFailed' or similar state that routes to MarkFailed on invalid input.",
+    "Step 2 - Add a Choice state (ValidateInput) to cdk-base.go in the state machine chain, inserted after WriteInitialRecord and before ProcessAudio. The Choice state should check the file extension from $.detail.object.key using StringMatches conditions. Valid extensions: *.mp3, *.wav, *.m4a, *.ogg, *.flac. If the extension does not match any valid pattern, route to MarkFailed (which then goes to NotifyFailed). If valid, proceed to ProcessAudio.",
+    "Step 3 - Wire the Lambda handler in lambda/processor/main.go to use the aws-lambda-go runtime: add 'github.com/aws/aws-lambda-go/lambda' import and call lambda.Start(handler) in main(). Add input validation logic in the handler: check that AudioID, Bucket, and ObjectKey are non-empty; check file extension is one of .mp3, .wav, .m4a, .ogg, .flac; return an error if validation fails.",
+    "Step 4 - Add the OUTPUT_BUCKET_NAME environment variable to the Lambda function in cdk-base.go (referencing the output bucket). This completes the wiring so the Lambda knows where to write processed output.",
+    "Step 5 - Add a go.mod for the lambda/processor module (separate module since it has different dependencies - aws-lambda-go). Or alternatively add the aws-lambda-go dependency to the root go.mod. Run GOPROXY=direct go mod tidy in the appropriate directory.",
+    "Step 6 - Run `unset NODE_OPTIONS && GOPROXY=direct go test ./...` and confirm all tests pass. Run `unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet` and confirm it succeeds."
+  ],
+  "acceptance_criteria": [
+    "All new CDK assertion tests pass (ValidateInput state, Choice type, file extension checks, validation error path)",
+    "The state machine chain includes: WriteInitialRecord -> ValidateInput (Choice) -> [valid] ProcessAudio -> Polly -> MarkCompleted -> NotifyCompleted, and [invalid] -> MarkFailed -> NotifyFailed",
+    "Lambda handler uses lambda.Start(handler) for runtime wiring",
+    "Lambda validates AudioID, Bucket, ObjectKey non-empty and checks file extension",
+    "Lambda has OUTPUT_BUCKET_NAME environment variable",
+    "`go test ./...` passes",
+    "`cdk synth` succeeds"
+  ],
+  "verification": [
+    "unset NODE_OPTIONS && GOPROXY=direct go test -v ./...",
+    "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
