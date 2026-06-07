@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awskms"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssns"
@@ -70,6 +71,20 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		MasterKey: awskms.Alias_FromAliasName(stack, jsii.String("SnsKmsKeyFailed"), jsii.String("alias/aws/sns")),
 	})
 
+	// Lambda Function - SleepAudioProcessor
+	// Placeholder for audio processing/validation logic. Uses Go custom runtime.
+	processorLambda := awslambda.NewFunction(stack, jsii.String("SleepAudioProcessor"), &awslambda.FunctionProps{
+		Runtime: awslambda.Runtime_PROVIDED_AL2023(),
+		Handler: jsii.String("bootstrap"),
+		Code:    awslambda.Code_FromAsset(jsii.String("lambda/processor"), nil),
+		Environment: &map[string]*string{
+			"TABLE_NAME": metadataTable.TableName(),
+		},
+	})
+
+	// Grant Lambda read/write access to the DynamoDB metadata table
+	metadataTable.GrantReadWriteData(processorLambda)
+
 	// Step Functions DynamoDB PutItem task - write initial PROCESSING record
 	// ConditionExpression prevents overwriting in-flight records: only allows
 	// the PutItem if no record exists for this audioId, or the existing record
@@ -105,6 +120,18 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 		IamResources: &[]*string{jsii.String("*")},
 		ResultPath:   jsii.String("$.pollyResult"),
+	})
+
+	// Step Functions LambdaInvoke task - process audio via SleepAudioProcessor Lambda
+	// Payload extracts flat {audioId, bucket, objectKey} from the EventBridge envelope
+	processAudio := awsstepfunctionstasks.NewLambdaInvoke(stack, jsii.String("ProcessAudio"), &awsstepfunctionstasks.LambdaInvokeProps{
+		LambdaFunction: processorLambda,
+		Payload: awsstepfunctions.TaskInput_FromObject(&map[string]interface{}{
+			"audioId":   awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+			"bucket":    awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.bucket.name")),
+			"objectKey": awsstepfunctions.JsonPath_StringAt(jsii.String("$.detail.object.key")),
+		}),
+		ResultPath: jsii.String("$.processorResult"),
 	})
 
 	// Step Functions DynamoDB UpdateItem task - mark as COMPLETED
@@ -226,8 +253,13 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		ResultPath: jsii.String("$.error"),
 	})
 
-	// Chain: WriteInitialRecord -> PollyTask -> MarkCompleted -> NotifyCompleted
-	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(pollyTask).Next(markCompleted).Next(notifyCompleted)
+	// Add error handling: ProcessAudio Lambda catches all errors and transitions to MarkFailed
+	processAudio.AddCatch(markFailed, &awsstepfunctions.CatchProps{
+		ResultPath: jsii.String("$.error"),
+	})
+
+	// Chain: WriteInitialRecord -> ProcessAudio (Lambda) -> PollyTask -> MarkCompleted -> NotifyCompleted
+	chain := awsstepfunctions.Chain_Start(writeInitialRecord).Next(processAudio).Next(pollyTask).Next(markCompleted).Next(notifyCompleted)
 
 	// Step Functions State Machine
 	stateMachine := awsstepfunctions.NewStateMachine(stack, jsii.String("SleepAudioPipelineStateMachine"), &awsstepfunctions.StateMachineProps{
