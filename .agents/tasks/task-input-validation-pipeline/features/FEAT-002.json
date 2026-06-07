@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "docs",
   "description": "Update ARCHITECTURE.md to reflect the complete integrated pipeline with input validation. Refine the Mermaid diagram to show the ValidateInput Choice state, the validation failure path, and the complete end-to-end flow. Add a section describing the validation logic and how invalid inputs are handled.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Update the 'Current State Diagram' Mermaid diagram in ARCHITECTURE.md to include the ValidateInput (Choice) state between WriteInitialRecord and ProcessAudio. Show the branching: valid extensions go to ProcessAudio, invalid extensions go to MarkFailed -> NotifyFailed.",
     "Step 2 - Update the 'Orchestration Layer' section to document the ValidateInput Choice state, explaining what extensions are valid and how invalid files are rejected.",
@@ -23,5 +23,5 @@
     "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Documentation-only change. All tests pass (cached), cdk synth succeeds. Updated Mermaid diagram, Orchestration Layer, Processing Layer, added End-to-End Flow section, updated Implemented Components table, and removed the Next milestone note."
 }
