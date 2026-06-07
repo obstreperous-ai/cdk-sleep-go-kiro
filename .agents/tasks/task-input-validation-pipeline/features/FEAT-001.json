@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Add input validation to the Step Functions state machine (Choice state checking file extension) and wire the Lambda handler to the AWS Lambda runtime API. Write failing CDK assertion tests first (TDD), then implement the validation Choice state and Lambda runtime wiring.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Write failing tests in cdk-base_test.go: (a) TestStateMachineDefinitionContainsValidateInput - verify the state machine definition includes a 'ValidateInput' state name. (b) TestStateMachineDefinitionContainsChoiceState - verify the definition includes a Choice state type (CDK renders as '\"Type\":\"Choice\"'). (c) TestStateMachineValidationRejectsInvalidExtensions - verify the state machine definition includes string patterns for valid extensions like '.mp3', '.wav', '.m4a', '.ogg', '.flac' to confirm they are checked. (d) TestLambdaFunctionHasOutputBucketEnv - verify Lambda has OUTPUT_BUCKET_NAME environment variable. (e) TestStateMachineDefinitionContainsValidationErrorPath - verify definition contains a 'ValidationFailed' or similar state that routes to MarkFailed on invalid input.",
     "Step 2 - Add a Choice state (ValidateInput) to cdk-base.go in the state machine chain, inserted after WriteInitialRecord and before ProcessAudio. The Choice state should check the file extension from $.detail.object.key using StringMatches conditions. Valid extensions: *.mp3, *.wav, *.m4a, *.ogg, *.flac. If the extension does not match any valid pattern, route to MarkFailed (which then goes to NotifyFailed). If valid, proceed to ProcessAudio.",
@@ -25,5 +25,5 @@
     "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "gopkg.in domain is blocked in COMMON_DEPENDENCIES network mode so go mod tidy fails for lambda/processor (test deps of aws-lambda-go reference gopkg.in/yaml.v3). Workaround: go build ./... works fine without running tidy. The cdk.out asset directory contains a stale copy of the old lambda/processor/main.go but this is in .gitignore. All 33 CDK assertion tests pass and cdk synth succeeds."
 }
