@@ -86,6 +86,9 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	// Grant Lambda read/write access to the DynamoDB metadata table
 	metadataTable.GrantReadWriteData(processorLambda)
 
+	// Grant Lambda write access to the output bucket for storing processed audio
+	outputBucket.GrantWrite(processorLambda, nil, nil)
+
 	// Step Functions DynamoDB PutItem task - write initial PROCESSING record
 	// ConditionExpression prevents overwriting in-flight records: only allows
 	// the PutItem if no record exists for this audioId, or the existing record
@@ -259,7 +262,12 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		ResultPath: jsii.String("$.error"),
 	})
 
-	// Choice state: ValidateInput - checks file extension before processing
+	// Choice state: ValidateInput - checks file extension before processing.
+	// Design note: StringMatches is case-sensitive, so *.mp3 will not match .MP3.
+	// This is acceptable because S3 object keys are typically lowercase and the
+	// EventBridge event preserves the original key casing. The Lambda handler also
+	// validates extensions (case-insensitive via strings.ToLower) as defense-in-depth,
+	// but since the Choice state runs first, uppercase extensions are rejected early.
 	validateInput := awsstepfunctions.NewChoice(stack, jsii.String("ValidateInput"), nil)
 
 	// Define valid file extension conditions using StringMatches on $.detail.object.key

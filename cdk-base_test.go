@@ -716,3 +716,34 @@ func TestLambdaFunctionHasOutputBucketEnv(t *testing.T) {
 		},
 	})
 }
+
+func TestLambdaHasOutputBucketWritePermission(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda execution role must have S3 write permissions for the output bucket
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": assertions.Match_ArrayWith(&[]interface{}{
+						"s3:PutObject",
+						"s3:PutObjectLegalHold",
+						"s3:PutObjectRetention",
+						"s3:PutObjectTagging",
+						"s3:PutObjectVersionTagging",
+					}),
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioProcessor")),
+			},
+		}),
+	})
+}
