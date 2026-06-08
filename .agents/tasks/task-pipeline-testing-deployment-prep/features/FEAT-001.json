@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Expand test coverage and implement multi-environment support with CDK Pipelines skeleton. Following strict TDD: write failing tests first for end-to-end flow verification, snapshot testing, multi-environment context handling, and pipeline construct existence, then implement the minimal code to make them pass.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Add expanded integration-style tests to cdk-base_test.go that verify the complete pipeline wiring: (a) TestStateMachineFullSuccessPath - verify the state machine definition contains the complete chain WriteInitialRecord -> ValidateInput -> ProcessAudio -> PollyTask -> MarkCompleted -> NotifyCompleted with correct Next transitions. (b) TestStateMachineFullErrorPath - verify MarkFailed -> NotifyFailed chain and that ProcessAudio/Polly Catch clauses route to MarkFailed. (c) TestStateMachineRetryConfiguration - verify retry policies are present on MarkCompleted, MarkFailed, NotifyCompleted, NotifyFailed states. (d) TestStateMachineXRayTracingEnabled - verify TracingConfiguration is enabled on the state machine.",
     "Step 2 - Add snapshot test using template.ToJSON() - create TestStackSnapshotStability that synthesizes the stack and compares against a golden file. Store the snapshot in testdata/snapshot.json. On first run, write the file if it doesn't exist. On subsequent runs, compare and fail if different (indicating unintended drift).",
@@ -27,5 +27,5 @@
     "NODE_OPTIONS=\"\" GOPROXY=direct npx cdk synth -c env=prod"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Fixed deprecated PointInTimeRecovery with PointInTimeRecoverySpecification. Changed cdk.json app command from 'go run cdk-base.go' to 'go run .' to support multi-file main package. Added cdk-base binary to .gitignore. All 44 tests pass. CDK synth succeeds for default, env=prod, and pipeline=true contexts."
 }
