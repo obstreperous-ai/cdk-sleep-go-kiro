@@ -1,0 +1,14 @@
+{
+  "task_id": "task-input-validation-pipeline",
+  "task_description": "Add input validation to the Step Functions state machine via a Choice state that checks file extensions, wire the Lambda handler to the AWS Lambda runtime API with validation logic, and update ARCHITECTURE.md to reflect the complete integrated pipeline.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "All 36 CDK assertion tests pass (including new TestLambdaHasOutputBucketWritePermission). 12 Lambda handler unit tests pass. cdk synth succeeds. Review fixes applied: outputBucket.GrantWrite added, Lambda unit tests created, case-sensitivity design note documented."
+  }
+}

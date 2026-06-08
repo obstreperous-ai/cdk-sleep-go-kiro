@@ -1,0 +1,22 @@
+{
+  "project_type": "Go CDK project (AWS CDK in Go) - serverless audio processing pipeline",
+  "language": "Go",
+  "build_system": "Go modules + AWS CDK CLI. GOPROXY=direct required (standard proxy blocked). NODE_OPTIONS must be unset for jsii runtime.",
+  "test_framework": "Go testing with CDK assertions (github.com/aws/aws-cdk-go/awscdk/v2/assertions). Tests in cdk-base_test.go use Template_FromStack and assertion matchers.",
+  "build_command": "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet",
+  "test_command": "unset NODE_OPTIONS && GOPROXY=direct go test ./...",
+  "verification_instructions": "1. Run `unset NODE_OPTIONS && GOPROXY=direct go test ./...` - all tests must pass. 2. Run `unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet` - must succeed with no errors.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "1. unset NODE_OPTIONS 2. GOPROXY=direct go mod download 3. npm install -g aws-cdk (if not installed)",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode. GOPROXY=direct is required (Google storage proxy blocked). NODE_OPTIONS must be unset to avoid jsii preload error. Go 1.25.1 available. Node 22.22.3 available. CDK installed globally.",
+  "contribution_requirements": "Strict TDD: write failing tests first, then minimal code. ARCHITECTURE.md must be updated with any infrastructure changes. Conventional commits required. Run go test and cdk synth before pushing.",
+  "key_patterns": "CDK constructs defined in NewCdkBaseStack(). Tests use assertions.Template_FromStack with HasResourceProperties and Match_ helpers. State machine uses Chain_Start().Next() pattern. Error handling via AddCatch(). Lambda uses provided.al2023 runtime with 'bootstrap' handler. Each CDK test function creates its own app/stack/template.",
+  "relevant_files": [
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "lambda/processor/main.go",
+    "ARCHITECTURE.md",
+    "go.mod"
+  ],
+  "directory_structure": "Root: cdk-base.go (CDK stack), cdk-base_test.go (CDK assertion tests), go.mod/go.sum (deps), ARCHITECTURE.md, CONTRIBUTING.md. lambda/processor/main.go (Lambda handler source). .github/workflows/ci.yml (CI pipeline)."
+}

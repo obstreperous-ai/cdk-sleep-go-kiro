@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Address review findings: add outputBucket.GrantWrite IAM grant, add Lambda handler unit tests, and document case-sensitivity design decision.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Add outputBucket.GrantWrite(processorLambda, nil, nil) in cdk-base.go after the metadataTable grant.",
+    "Step 2 - Add CDK assertion test TestLambdaHasOutputBucketWritePermission verifying the Lambda role has S3 write permissions.",
+    "Step 3 - Create lambda/processor/main_test.go with unit tests for: valid input (all 5 extensions), empty fields (audioId, bucket, objectKey), and invalid extensions.",
+    "Step 4 - Add design note comment on the ValidateInput Choice state explaining that StringMatches is case-sensitive and documenting why this is acceptable."
+  ],
+  "acceptance_criteria": [
+    "outputBucket.GrantWrite is present in CDK stack",
+    "CDK test verifies Lambda has S3 write permissions on the output bucket",
+    "Lambda handler has unit tests covering valid input, empty fields, and invalid extensions",
+    "Code comment documents case-sensitivity design decision",
+    "All tests pass (CDK and Lambda)",
+    "cdk synth succeeds"
+  ],
+  "verification": [
+    "unset NODE_OPTIONS && GOPROXY=direct go test ./...",
+    "cd lambda/processor && unset NODE_OPTIONS && GOPROXY=direct go test ./...",
+    "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet"
+  ],
+  "blocked_reason": null,
+  "findings": "GrantWrite requires 3 arguments (grantee, objectsKeyPattern, allowedActionPatterns). All 36 CDK tests pass. All 12 Lambda handler unit tests pass. cdk synth succeeds."
+}

@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "docs",
+  "description": "Update ARCHITECTURE.md to reflect the complete integrated pipeline with input validation. Refine the Mermaid diagram to show the ValidateInput Choice state, the validation failure path, and the complete end-to-end flow. Add a section describing the validation logic and how invalid inputs are handled.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Update the 'Current State Diagram' Mermaid diagram in ARCHITECTURE.md to include the ValidateInput (Choice) state between WriteInitialRecord and ProcessAudio. Show the branching: valid extensions go to ProcessAudio, invalid extensions go to MarkFailed -> NotifyFailed.",
+    "Step 2 - Update the 'Orchestration Layer' section to document the ValidateInput Choice state, explaining what extensions are valid and how invalid files are rejected.",
+    "Step 3 - Update the 'Processing Layer' section to document that the Lambda handler is now wired to the Lambda runtime API and performs input validation (checking required fields and file extension).",
+    "Step 4 - Add or update a section describing the complete end-to-end flow from S3 upload through to SNS notification, highlighting both the success and failure paths including the new validation step.",
+    "Step 5 - Update the 'Implemented Components' table to reflect that the Lambda is now fully wired (not a skeleton) and that input validation is implemented.",
+    "Step 6 - Remove or update the 'Next milestone' note at the bottom of the Current State Diagram section since validation is now implemented."
+  ],
+  "acceptance_criteria": [
+    "Mermaid diagram shows ValidateInput Choice state with valid/invalid branching",
+    "Documentation describes the validation logic (valid extensions: .mp3, .wav, .m4a, .ogg, .flac)",
+    "End-to-end flow section covers both success and failure paths",
+    "All text is consistent with the actual CDK code",
+    "No broken Mermaid syntax"
+  ],
+  "verification": [
+    "unset NODE_OPTIONS && GOPROXY=direct go test ./...",
+    "unset NODE_OPTIONS && GOPROXY=direct cdk synth --quiet"
+  ],
+  "blocked_reason": null,
+  "findings": "Documentation-only change. All tests pass (cached), cdk synth succeeds. Updated Mermaid diagram, Orchestration Layer, Processing Layer, added End-to-End Flow section, updated Implemented Components table, and removed the Next milestone note."
+}
