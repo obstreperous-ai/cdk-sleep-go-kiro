@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/pipelines"
 	"github.com/aws/constructs-go/constructs/v10"
@@ -26,19 +28,26 @@ func NewPipelineStack(scope constructs.Construct, id string, props *PipelineStac
 	}
 
 	// GitHub source connection (placeholder ARN - replace with actual CodeStar connection)
+	connectionArn := "arn:aws:codestar-connections:us-east-1:123456789012:connection/placeholder"
 	source := pipelines.CodePipelineSource_Connection(
 		jsii.String("owner/cdk-sleep-go-kiro"),
 		jsii.String("main"),
 		&pipelines.ConnectionSourceOptions{
-			ConnectionArn: jsii.String("arn:aws:codestar-connections:us-east-1:123456789012:connection/placeholder"),
+			ConnectionArn: jsii.String(connectionArn),
 		},
 	)
 
-	// Synth step: run tests and synthesize CDK
+	// Guard: fail synthesis if the connection ARN still contains "placeholder"
+	if strings.Contains(connectionArn, "placeholder") {
+		awscdk.Annotations_Of(stack).AddError(jsii.String("Pipeline connection ARN contains 'placeholder'. Replace with a real CodeStar connection ARN before deploying."))
+	}
+
+	// Synth step: download modules, run tests, and synthesize CDK
 	synthStep := pipelines.NewShellStep(jsii.String("Synth"), &pipelines.ShellStepProps{
 		Input: source,
 		Commands: &[]*string{
-			jsii.String("go test ./..."),
+			jsii.String("go mod download"),
+			jsii.String("GOPROXY=direct go test ./..."),
 			jsii.String("npx cdk synth"),
 		},
 	})

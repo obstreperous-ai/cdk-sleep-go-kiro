@@ -58,3 +58,18 @@ func TestPipelineHasSynthStep(t *testing.T) {
 		}),
 	})
 }
+
+func TestPipelineNameIncludesEnvironment(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewPipelineStack(app, "TestPipelineStack", &PipelineStackProps{
+		EnvName: "staging",
+	})
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Pipeline name must include the environment suffix
+	template.HasResourceProperties(jsii.String("AWS::CodePipeline::Pipeline"), map[string]interface{}{
+		"Name": "SleepAudioPipeline-staging",
+	})
+}

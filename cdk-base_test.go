@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -947,13 +948,25 @@ func TestStackSnapshotStability(t *testing.T) {
 		t.Skip("snapshot file created; skipping comparison on first run")
 	}
 
-	// Read the existing golden file and compare
+	// Read the existing golden file and compare structurally
 	goldenBytes, err := os.ReadFile(snapshotPath)
 	if err != nil {
 		t.Fatalf("failed to read snapshot file: %v", err)
 	}
 
-	if string(snapshotBytes) != string(goldenBytes) {
+	// Use structural comparison via json.Unmarshal + reflect.DeepEqual
+	// to avoid false failures from inconsequential formatting differences.
+	var snapshotData interface{}
+	if err := json.Unmarshal(snapshotBytes, &snapshotData); err != nil {
+		t.Fatalf("failed to unmarshal synthesized template: %v", err)
+	}
+
+	var goldenData interface{}
+	if err := json.Unmarshal(goldenBytes, &goldenData); err != nil {
+		t.Fatalf("failed to unmarshal golden snapshot: %v", err)
+	}
+
+	if !reflect.DeepEqual(snapshotData, goldenData) {
 		t.Fatalf("snapshot mismatch: synthesized template differs from testdata/snapshot.json. " +
 			"If this change is intentional, delete testdata/snapshot.json and re-run tests to regenerate.")
 	}

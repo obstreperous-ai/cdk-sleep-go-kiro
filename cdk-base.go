@@ -355,14 +355,27 @@ func main() {
 	app.Synth(nil)
 }
 
+// allowedEnvs defines the valid environment context values.
+var allowedEnvs = map[string]bool{
+	"dev":     true,
+	"staging": true,
+	"prod":    true,
+}
+
 // getEnvContext reads the 'env' context value from the CDK app and defaults to 'dev'.
+// If the value is not in the allowed list (dev, staging, prod), it defaults to 'dev'
+// and adds a CDK annotation warning.
 func getEnvContext(app awscdk.App) string {
 	envCtx := app.Node().TryGetContext(jsii.String("env"))
 	if envCtx == nil {
 		return "dev"
 	}
 	if envStr, ok := envCtx.(string); ok && envStr != "" {
-		return envStr
+		if allowedEnvs[envStr] {
+			return envStr
+		}
+		awscdk.Annotations_Of(app).AddWarningV2(jsii.String("InvalidEnvContext"), jsii.String("invalid env context value '"+envStr+"'; defaulting to 'dev'. Allowed values: dev, staging, prod"))
+		return "dev"
 	}
 	return "dev"
 }
