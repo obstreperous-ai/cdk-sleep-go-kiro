@@ -404,6 +404,90 @@ cdk synth -c env=prod -c enableVpc=true -c bedrockEnabled=true
 
 Stack names follow the pattern `SleepAudioPipeline-{env}`, ensuring separate CloudFormation stacks per environment with no resource name collisions.
 
+### Implementation Details
+
+The multi-environment support is implemented in `cdk-base.go` via the `getEnvContext` helper function:
+
+1. The `getEnvContext(app)` function reads the `env` context value from the CDK app node using `app.Node().TryGetContext(jsii.String("env"))`.
+2. If no context value is provided or it is empty, the function defaults to `"dev"`.
+3. The stack ID is computed as `SleepAudioPipeline-{env}` (e.g., `SleepAudioPipeline-dev`, `SleepAudioPipeline-prod`).
+4. All CDK-generated resource names are unique per stack, so no explicit per-resource naming is required.
+
+Example usage:
+
+```bash
+# Default (dev)
+npx cdk synth
+
+# Production
+npx cdk synth -c env=prod
+
+# With pipeline
+npx cdk synth -c pipeline=true
+```
+
+---
+
+## Deployment Preparation
+
+### CDK Pipelines
+
+The project includes a CDK Pipelines skeleton (`pipeline.go`) that provides a CI/CD pipeline using AWS CodePipeline. The pipeline is conditionally instantiated when the `pipeline` context is set to `"true"`.
+
+**Pipeline Architecture:**
+
+```mermaid
+flowchart LR
+    Source["Source\n(GitHub via CodeStar Connection)"] --> Synth["Synth\n(go test + cdk synth)"]
+    Synth --> Deploy["Deploy\n(SleepAudioPipeline-{env})"]
+```
+
+**Pipeline Components:**
+
+| Component | Description |
+|---|---|
+| **Source** | GitHub repository connected via CodeStar Connections |
+| **Synth Step** | Runs `go test ./...` followed by `npx cdk synth` |
+| **Deploy Stage** | Deploys the `SleepAudioPipeline-{env}` application stack |
+
+**Configuration:**
+
+- The pipeline stack is named `SleepAudioPipelineCI`
+- Source connection uses a placeholder ARN that must be replaced with a real CodeStar Connection ARN before deployment
+- The pipeline self-mutates: changes to `pipeline.go` are automatically applied on the next pipeline execution
+
+**Conditional Instantiation:**
+
+The pipeline is only created when explicitly requested via CDK context:
+
+```bash
+# Without pipeline (default)
+npx cdk synth
+# Output: SleepAudioPipeline-dev
+
+# With pipeline
+npx cdk synth -c pipeline=true
+# Output: SleepAudioPipeline-dev, SleepAudioPipelineCI, Deploy-dev/SleepAudioPipeline-dev
+```
+
+### Deployment Flow
+
+```mermaid
+flowchart TD
+    Push["Git Push to main"] --> Pipeline["CodePipeline Triggered"]
+    Pipeline --> Source["Source Stage\n(Fetch from GitHub)"]
+    Source --> Build["Build Stage\n(go test + cdk synth)"]
+    Build --> DeployDev["Deploy Stage\n(SleepAudioPipeline-dev)"]
+    DeployDev --> Future["Future: Manual Approval\n+ Deploy Prod"]
+```
+
+### Future Pipeline Enhancements
+
+- Add a manual approval gate between dev and prod deployments
+- Add integration test steps after deployment
+- Enable cross-account deployment for prod isolation
+- Add notification actions for pipeline state changes
+
 ---
 
 ## Cost Considerations

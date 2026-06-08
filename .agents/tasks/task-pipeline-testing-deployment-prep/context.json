@@ -1,0 +1,27 @@
+{
+  "project_type": "AWS CDK Go application - Event-Driven Sleep Audio Pipeline",
+  "language": "Go",
+  "build_system": "Go modules + AWS CDK CLI (npx cdk). GOPROXY=direct required for module downloads. NODE_OPTIONS must be set to empty string to avoid jsii runtime failure.",
+  "test_framework": "Go testing package with CDK assertions (github.com/aws/aws-cdk-go/awscdk/v2/assertions). Tests in cdk-base_test.go use Template_FromStack with HasResourceProperties, AllResourcesProperties, ResourceCountIs, and Match helpers. Lambda tests in lambda/processor/main_test.go use standard Go testing.",
+  "build_command": "NODE_OPTIONS=\"\" GOPROXY=direct go build ./...",
+  "test_command": "NODE_OPTIONS=\"\" GOPROXY=direct go test -v ./...",
+  "verification_instructions": "1. Run 'NODE_OPTIONS=\"\" GOPROXY=direct go test -v ./...' and confirm all tests pass. 2. Run 'NODE_OPTIONS=\"\" GOPROXY=direct npx cdk synth' and confirm synthesis succeeds.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "Dependencies download via 'GOPROXY=direct go mod download'. CDK CLI available via npx.",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode. storage.googleapis.com is blocked so GOPROXY must be set to 'direct'. NODE_OPTIONS env var has a broken preload path; must be cleared (NODE_OPTIONS='') for any jsii/CDK operation. Go 1.25.1 and Node.js v22 available.",
+  "contribution_requirements": "Strict TDD: write failing tests first, then minimal code to pass. All commits must use Conventional Commits format. ARCHITECTURE.md must stay in sync with code changes. Run 'go test ./...' and 'cdk synth' before pushing.",
+  "key_patterns": "Single stack function NewCdkBaseStack in cdk-base.go. Tests each create fresh app+stack with assertions.Template_FromStack. Pattern: template.HasResourceProperties for specific checks, template.AllResourcesProperties for invariants across resource type, Match_ArrayWith/Match_ObjectLike/Match_StringLikeRegexp for flexible matching. State machine definition verified via Fn::Join array with regex matching on serialized JSON.",
+  "relevant_files": [
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "cdk.json",
+    "go.mod",
+    "ARCHITECTURE.md",
+    "CONTRIBUTING.md",
+    ".github/workflows/ci.yml",
+    ".github/AGENT_GUIDELINES.md",
+    "lambda/processor/main.go",
+    "lambda/processor/main_test.go"
+  ],
+  "directory_structure": "Root: cdk-base.go (main CDK stack), cdk-base_test.go (CDK assertion tests), cdk.json (CDK config), go.mod/go.sum (Go dependencies). lambda/processor/ contains the Go Lambda function. .github/workflows/ci.yml contains CI. ARCHITECTURE.md is the source of truth for design."
+}

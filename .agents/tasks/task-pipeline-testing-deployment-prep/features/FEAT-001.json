@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Expand test coverage and implement multi-environment support with CDK Pipelines skeleton. Following strict TDD: write failing tests first for end-to-end flow verification, snapshot testing, multi-environment context handling, and pipeline construct existence, then implement the minimal code to make them pass.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1 - Add expanded integration-style tests to cdk-base_test.go that verify the complete pipeline wiring: (a) TestStateMachineFullSuccessPath - verify the state machine definition contains the complete chain WriteInitialRecord -> ValidateInput -> ProcessAudio -> PollyTask -> MarkCompleted -> NotifyCompleted with correct Next transitions. (b) TestStateMachineFullErrorPath - verify MarkFailed -> NotifyFailed chain and that ProcessAudio/Polly Catch clauses route to MarkFailed. (c) TestStateMachineRetryConfiguration - verify retry policies are present on MarkCompleted, MarkFailed, NotifyCompleted, NotifyFailed states. (d) TestStateMachineXRayTracingEnabled - verify TracingConfiguration is enabled on the state machine.",
+    "Step 2 - Add snapshot test using template.ToJSON() - create TestStackSnapshotStability that synthesizes the stack and compares against a golden file. Store the snapshot in testdata/snapshot.json. On first run, write the file if it doesn't exist. On subsequent runs, compare and fail if different (indicating unintended drift).",
+    "Step 3 - Add multi-environment tests that exercise CDK context: (a) Modify NewCdkBaseStack to accept context values from the CDK app (env name via node.TryGetContext). (b) Add TestMultiEnvironmentStackName - verify that passing different 'env' context values produces stack names like 'SleepAudioPipeline-dev', 'SleepAudioPipeline-prod'. (c) Add TestMultiEnvironmentDefaultsToDevContext - verify default behavior when no context is provided.",
+    "Step 4 - Implement multi-environment support in cdk-base.go: (a) Read 'env' context value from the CDK app node (default to 'dev'). (b) Use the environment name to prefix/suffix resource names where appropriate (stack name pattern: SleepAudioPipeline-{env}). (c) Add a helper function getEnvContext(app) that returns the environment name. (d) Update the main() function to use the env context for the stack ID.",
+    "Step 5 - Add CDK Pipeline skeleton tests: (a) Create a new file pipeline.go containing a PipelineStack construct that uses aws-cdk-lib/pipelines (CodePipeline). (b) Add TestPipelineStackExists in a new file pipeline_test.go that verifies the pipeline stack synthesizes and contains an AWS::CodePipeline::Pipeline resource. (c) Add TestPipelineHasSourceStage and TestPipelineHasSynthStep tests.",
+    "Step 6 - Implement the CDK Pipelines skeleton in pipeline.go: (a) Create NewPipelineStack function that instantiates a CodePipeline with a GitHub source connection and synth step (ShellStep running 'go test ./... && npx cdk synth'). (b) Add a stage that deploys the CdkBaseStack (the application stack). (c) The pipeline should be synthesizable but not yet deployed (placeholder connection ARN). (d) Wire pipeline into main() conditionally based on context (only instantiated when 'pipeline' context is 'true').",
+    "Step 7 - Update ARCHITECTURE.md: (a) Add a 'Deployment Preparation' section describing the CDK Pipelines skeleton and multi-environment strategy. (b) Update the Multi-Environment Support section with details on the implemented context-based approach. (c) Add a deployment flow diagram showing the pipeline stages (Source -> Synth -> Deploy Dev -> Deploy Prod). (d) Update the Current State Diagram to reflect environment awareness."
+  ],
+  "acceptance_criteria": [
+    "Running 'NODE_OPTIONS=\"\" GOPROXY=direct go test -v ./...' passes all existing and new tests",
+    "Running 'NODE_OPTIONS=\"\" GOPROXY=direct npx cdk synth' succeeds for the default stack",
+    "New tests cover: full success path transitions, full error path transitions, retry configuration, X-Ray tracing, snapshot stability, multi-environment stack naming, pipeline construct existence",
+    "Multi-environment support: passing -c env=prod changes the stack ID to 'SleepAudioPipeline-prod'",
+    "Pipeline skeleton: pipeline.go contains a PipelineStack with CodePipeline construct, conditionally instantiated",
+    "ARCHITECTURE.md is updated with deployment preparation and multi-environment sections",
+    "All commit messages follow Conventional Commits format"
+  ],
+  "verification": [
+    "NODE_OPTIONS=\"\" GOPROXY=direct go test -v ./...",
+    "NODE_OPTIONS=\"\" GOPROXY=direct npx cdk synth",
+    "NODE_OPTIONS=\"\" GOPROXY=direct npx cdk synth -c env=prod"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

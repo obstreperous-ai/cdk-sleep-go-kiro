@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -746,4 +749,254 @@ func TestLambdaHasOutputBucketWritePermission(t *testing.T) {
 			},
 		}),
 	})
+}
+
+// --- Step 1: Expanded Integration Tests ---
+
+func TestStateMachineFullSuccessPath(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Verify the state machine definition contains the complete success chain:
+	// WriteInitialRecord -> ValidateInput -> ProcessAudio -> PollyTask -> MarkCompleted -> NotifyCompleted
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`WriteInitialRecord.*"Next".*ValidateInput`)),
+				}),
+			}),
+		},
+	})
+
+	// ProcessAudio transitions to PollyTask
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`ProcessAudio.*"Next".*PollyTask`)),
+				}),
+			}),
+		},
+	})
+
+	// PollyTask transitions to MarkCompleted
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`PollyTask.*"Next".*MarkCompleted`)),
+				}),
+			}),
+		},
+	})
+
+	// MarkCompleted transitions to NotifyCompleted
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkCompleted.*"Next".*NotifyCompleted`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineFullErrorPath(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkFailed transitions to NotifyFailed
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkFailed.*"Next".*NotifyFailed`)),
+				}),
+			}),
+		},
+	})
+
+	// ProcessAudio has a Catch clause routing to MarkFailed
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`ProcessAudio.*Catch.*MarkFailed`)),
+				}),
+			}),
+		},
+	})
+
+	// PollyTask has a Catch clause routing to MarkFailed
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`PollyTask.*Catch.*MarkFailed`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineRetryConfiguration(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// MarkCompleted has retry configuration
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkCompleted.*Retry`)),
+				}),
+			}),
+		},
+	})
+
+	// MarkFailed has retry configuration
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`MarkFailed.*Retry`)),
+				}),
+			}),
+		},
+	})
+
+	// NotifyCompleted has retry configuration
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`NotifyCompleted.*Retry`)),
+				}),
+			}),
+		},
+	})
+
+	// NotifyFailed has retry configuration
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`NotifyFailed.*Retry`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestStateMachineXRayTracingEnabled(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine must have TracingConfiguration enabled
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"TracingConfiguration": map[string]interface{}{
+			"Enabled": true,
+		},
+	})
+}
+
+// --- Step 2: Snapshot Test ---
+
+func TestStackSnapshotStability(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Get the JSON representation of the template
+	templateJSON := template.ToJSON()
+
+	// Marshal to formatted JSON
+	snapshotBytes, err := json.MarshalIndent(templateJSON, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal template JSON: %v", err)
+	}
+
+	snapshotPath := filepath.Join("testdata", "snapshot.json")
+
+	// If the golden file does not exist, write it and skip comparison
+	if _, err := os.Stat(snapshotPath); os.IsNotExist(err) {
+		err = os.MkdirAll("testdata", 0755)
+		if err != nil {
+			t.Fatalf("failed to create testdata directory: %v", err)
+		}
+		err = os.WriteFile(snapshotPath, snapshotBytes, 0644)
+		if err != nil {
+			t.Fatalf("failed to write snapshot file: %v", err)
+		}
+		t.Skip("snapshot file created; skipping comparison on first run")
+	}
+
+	// Read the existing golden file and compare
+	goldenBytes, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatalf("failed to read snapshot file: %v", err)
+	}
+
+	if string(snapshotBytes) != string(goldenBytes) {
+		t.Fatalf("snapshot mismatch: synthesized template differs from testdata/snapshot.json. " +
+			"If this change is intentional, delete testdata/snapshot.json and re-run tests to regenerate.")
+	}
+}
+
+// --- Step 3: Multi-Environment Tests ---
+
+func TestMultiEnvironmentStackName(t *testing.T) {
+	defer jsii.Close()
+
+	// Test with 'prod' environment context
+	app := awscdk.NewApp(&awscdk.AppProps{
+		Context: &map[string]interface{}{
+			"env": "prod",
+		},
+	})
+
+	envName := getEnvContext(app)
+	if envName != "prod" {
+		t.Fatalf("expected env context 'prod', got '%s'", envName)
+	}
+
+	stackID := "SleepAudioPipeline-" + envName
+	stack := NewCdkBaseStack(app, stackID, nil)
+
+	// Verify stack synthesizes (no panics)
+	assertions.Template_FromStack(stack, nil)
+}
+
+func TestMultiEnvironmentDefaultsToDevContext(t *testing.T) {
+	defer jsii.Close()
+
+	// Test with no environment context - should default to 'dev'
+	app := awscdk.NewApp(nil)
+
+	envName := getEnvContext(app)
+	if envName != "dev" {
+		t.Fatalf("expected default env context 'dev', got '%s'", envName)
+	}
+
+	stackID := "SleepAudioPipeline-" + envName
+	stack := NewCdkBaseStack(app, stackID, nil)
+
+	// Verify stack synthesizes
+	assertions.Template_FromStack(stack, nil)
 }

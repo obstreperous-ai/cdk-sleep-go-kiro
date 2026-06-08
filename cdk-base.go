@@ -57,7 +57,9 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		},
 		BillingMode:         awsdynamodb.BillingMode_PAY_PER_REQUEST,
 		Encryption:          awsdynamodb.TableEncryption_AWS_MANAGED,
-		PointInTimeRecovery: jsii.Bool(true),
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(true),
+		},
 		RemovalPolicy:       awscdk.RemovalPolicy_DESTROY,
 	})
 
@@ -328,13 +330,41 @@ func main() {
 
 	app := awscdk.NewApp(nil)
 
-	NewCdkBaseStack(app, "CdkBaseStack", &CdkBaseStackProps{
+	envName := getEnvContext(app)
+	stackID := "SleepAudioPipeline-" + envName
+
+	NewCdkBaseStack(app, stackID, &CdkBaseStackProps{
 		awscdk.StackProps{
 			Env: env(),
 		},
 	})
 
+	// Conditionally instantiate the pipeline stack when context 'pipeline' is 'true'
+	pipelineCtx := app.Node().TryGetContext(jsii.String("pipeline"))
+	if pipelineCtx != nil {
+		if pipelineStr, ok := pipelineCtx.(string); ok && pipelineStr == "true" {
+			NewPipelineStack(app, "SleepAudioPipelineCI", &PipelineStackProps{
+				StackProps: awscdk.StackProps{
+					Env: env(),
+				},
+				EnvName: envName,
+			})
+		}
+	}
+
 	app.Synth(nil)
+}
+
+// getEnvContext reads the 'env' context value from the CDK app and defaults to 'dev'.
+func getEnvContext(app awscdk.App) string {
+	envCtx := app.Node().TryGetContext(jsii.String("env"))
+	if envCtx == nil {
+		return "dev"
+	}
+	if envStr, ok := envCtx.(string); ok && envStr != "" {
+		return envStr
+	}
+	return "dev"
 }
 
 // env determines the AWS environment (account+region) in which our stack is to
