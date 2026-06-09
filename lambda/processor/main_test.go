@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -118,5 +122,62 @@ func TestHandler_InvalidExtension(t *testing.T) {
 				t.Errorf("expected 'unsupported file extension' error, got: %v", err)
 			}
 		})
+	}
+}
+
+func TestHandler_StructuredLogging(t *testing.T) {
+	// Capture stderr (where log output goes) and stdout
+	oldStderr := os.Stderr
+	oldStdout := os.Stdout
+	rErr, wErr, _ := os.Pipe()
+	rOut, wOut, _ := os.Pipe()
+	os.Stderr = wErr
+	os.Stdout = wOut
+
+	event := Event{AudioID: "test-audio.mp3", Bucket: "my-bucket", ObjectKey: "test-audio.mp3"}
+	_, err := handler(context.Background(), event)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Restore
+	wErr.Close()
+	wOut.Close()
+	os.Stderr = oldStderr
+	os.Stdout = oldStdout
+
+	var stderrBuf bytes.Buffer
+	io.Copy(&stderrBuf, rErr)
+	var stdoutBuf bytes.Buffer
+	io.Copy(&stdoutBuf, rOut)
+
+	// Combine all output
+	allOutput := stderrBuf.String() + stdoutBuf.String()
+
+	// Find JSON log lines and verify structured fields
+	lines := strings.Split(allOutput, "\n")
+	foundStructuredLog := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var logEntry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+			continue
+		}
+		// Check for structured log fields
+		if _, hasLevel := logEntry["level"]; hasLevel {
+			if _, hasMsg := logEntry["msg"]; hasMsg {
+				if _, hasAudioId := logEntry["audioId"]; hasAudioId {
+					foundStructuredLog = true
+					break
+				}
+			}
+		}
+	}
+
+	if !foundStructuredLog {
+		t.Errorf("expected structured JSON log line with fields 'level', 'msg', 'audioId' but got output:\n%s", allOutput)
 	}
 }

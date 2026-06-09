@@ -1,0 +1,7 @@
+{
+  "task_id": "task-advanced-error-handling-observability",
+  "task_description": "TDD implementation of advanced error handling (specific error types in Catch blocks), retry policies on ProcessAudio and PollyTask, observability improvements (Lambda X-Ray tracing, structured JSON logging, CloudWatch Alarms, optional Dashboard), and ARCHITECTURE.md documentation updates.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

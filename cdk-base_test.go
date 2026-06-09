@@ -972,6 +972,131 @@ func TestStackSnapshotStability(t *testing.T) {
 	}
 }
 
+// --- Advanced Error Handling & Observability Tests ---
+
+func TestProcessAudioRetryConfiguration(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// ProcessAudio task must have a Retry configuration in the state machine definition
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`ProcessAudio.*Retry`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestPollyTaskRetryConfiguration(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// PollyTask must have a Retry configuration in the state machine definition
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`PollyTask.*Retry`)),
+				}),
+			}),
+		},
+	})
+}
+
+func TestLambdaXRayTracingEnabled(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// SleepAudioProcessor Lambda must have X-Ray tracing enabled (Active mode)
+	// Match on Runtime=provided.al2023 to distinguish from BucketNotificationsHandler
+	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
+		"Runtime": "provided.al2023",
+		"TracingConfig": map[string]interface{}{
+			"Mode": "Active",
+		},
+	})
+}
+
+func TestCloudWatchAlarmsExist(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// At least 2 CloudWatch Alarms must exist (ExecutionsFailed + Lambda Errors)
+	template.ResourceCountIs(jsii.String("AWS::CloudWatch::Alarm"), jsii.Number(2))
+}
+
+func TestStateMachineExecutionFailedAlarm(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// An alarm for StateMachine ExecutionsFailed metric must exist
+	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
+		"MetricName": "ExecutionsFailed",
+		"Namespace":  "AWS/States",
+	})
+}
+
+func TestLambdaErrorsAlarm(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// An alarm for Lambda Errors metric must exist
+	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
+		"MetricName": "Errors",
+		"Namespace":  "AWS/Lambda",
+	})
+}
+
+func TestSpecificErrorTypesInCatchBlocks(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// State machine definition must contain specific error types in Catch blocks
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`Lambda.ServiceException`)),
+				}),
+			}),
+		},
+	})
+
+	template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+		"DefinitionString": map[string]interface{}{
+			"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_StringLikeRegexp(jsii.String(`States.TaskFailed`)),
+				}),
+			}),
+		},
+	})
+}
+
 // --- Step 3: Multi-Environment Tests ---
 
 func TestMultiEnvironmentStackName(t *testing.T) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudwatch"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
@@ -79,6 +80,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		Runtime: awslambda.Runtime_PROVIDED_AL2023(),
 		Handler: jsii.String("bootstrap"),
 		Code:    awslambda.Code_FromAsset(jsii.String("lambda/processor"), nil),
+		Tracing: awslambda.Tracing_ACTIVE,
 		Environment: &map[string]*string{
 			"TABLE_NAME":         metadataTable.TableName(),
 			"OUTPUT_BUCKET_NAME": outputBucket.BucketName(),
@@ -254,14 +256,40 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	// Wire failure path: MarkFailed -> NotifyFailed
 	markFailed.Next(notifyFailed)
 
-	// Add error handling: Polly task catches all errors and transitions to MarkFailed
+	// Add error handling: Polly task - specific error catches first, then generic fallback
 	pollyTask.AddCatch(markFailed, &awsstepfunctions.CatchProps{
+		Errors:     &[]*string{jsii.String("States.TaskFailed")},
+		ResultPath: jsii.String("$.error"),
+	})
+	pollyTask.AddCatch(markFailed, &awsstepfunctions.CatchProps{
+		Errors:     &[]*string{jsii.String("States.ALL")},
 		ResultPath: jsii.String("$.error"),
 	})
 
-	// Add error handling: ProcessAudio Lambda catches all errors and transitions to MarkFailed
+	// Add retry for transient errors on PollyTask
+	pollyTask.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:      &[]*string{jsii.String("States.TaskFailed"), jsii.String("Polly.ServiceException")},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(3)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
+	})
+
+	// Add error handling: ProcessAudio Lambda - specific error catches first, then generic fallback
 	processAudio.AddCatch(markFailed, &awsstepfunctions.CatchProps{
+		Errors:     &[]*string{jsii.String("Lambda.ServiceException"), jsii.String("Lambda.AWSLambdaException"), jsii.String("Lambda.SdkClientException"), jsii.String("States.TaskFailed")},
 		ResultPath: jsii.String("$.error"),
+	})
+	processAudio.AddCatch(markFailed, &awsstepfunctions.CatchProps{
+		Errors:     &[]*string{jsii.String("States.ALL")},
+		ResultPath: jsii.String("$.error"),
+	})
+
+	// Add retry for transient errors on ProcessAudio
+	processAudio.AddRetry(&awsstepfunctions.RetryProps{
+		Errors:      &[]*string{jsii.String("Lambda.ServiceException"), jsii.String("Lambda.AWSLambdaException"), jsii.String("Lambda.SdkClientException"), jsii.String("States.TaskFailed")},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(3)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
 	})
 
 	// Choice state: ValidateInput - checks file extension before processing.
@@ -305,6 +333,38 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 	// Grant SNS publish permissions to the state machine
 	completedTopic.GrantPublish(stateMachine)
 	failedTopic.GrantPublish(stateMachine)
+
+	// CloudWatch Alarm - StateMachine ExecutionsFailed
+	awscloudwatch.NewAlarm(stack, jsii.String("StateMachineExecutionsFailedAlarm"), &awscloudwatch.AlarmProps{
+		Metric: awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
+			Namespace:  jsii.String("AWS/States"),
+			MetricName: jsii.String("ExecutionsFailed"),
+			DimensionsMap: &map[string]*string{
+				"StateMachineArn": stateMachine.StateMachineArn(),
+			},
+			Period: awscdk.Duration_Minutes(jsii.Number(1)),
+		}),
+		Threshold:          jsii.Number(1),
+		EvaluationPeriods:  jsii.Number(1),
+		ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+		AlarmDescription:   jsii.String("Alarm when state machine executions fail"),
+	})
+
+	// CloudWatch Alarm - Lambda Errors
+	awscloudwatch.NewAlarm(stack, jsii.String("LambdaErrorsAlarm"), &awscloudwatch.AlarmProps{
+		Metric: awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
+			Namespace:  jsii.String("AWS/Lambda"),
+			MetricName: jsii.String("Errors"),
+			DimensionsMap: &map[string]*string{
+				"FunctionName": processorLambda.FunctionName(),
+			},
+			Period: awscdk.Duration_Minutes(jsii.Number(5)),
+		}),
+		Threshold:          jsii.Number(1),
+		EvaluationPeriods:  jsii.Number(1),
+		ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+		AlarmDescription:   jsii.String("Alarm when Lambda function errors occur"),
+	})
 
 	// EventBridge Rule - matches Object Created events from the input bucket
 	rule := awsevents.NewRule(stack, jsii.String("InputBucketObjectCreatedRule"), &awsevents.RuleProps{
