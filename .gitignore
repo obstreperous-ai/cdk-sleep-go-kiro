@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+cdk-base
 
 # Test binary, built with `go test -c`
 *.test
