@@ -98,6 +98,11 @@
     },
     "LambdaErrorsAlarm8ED74A7D": {
       "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "SleepAudioPipelineFailedFEA65EAA"
+          }
+        ],
         "AlarmDescription": "Alarm when Lambda function errors occur",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "Dimensions": [
@@ -112,7 +117,7 @@
         "MetricName": "Errors",
         "Namespace": "AWS/Lambda",
         "Period": 300,
-        "Statistic": "Average",
+        "Statistic": "Sum",
         "Threshold": 1
       },
       "Type": "AWS::CloudWatch::Alarm"
@@ -326,11 +331,11 @@
               {
                 "Ref": "SleepAudioMetadataTableD77D3179"
               },
-              "\",\"ExpressionAttributeNames\":{\"#s\":\"status\"},\"ExpressionAttributeValues\":{\":status\":{\"S\":\"FAILED\"},\":updatedAt\":{\"S.$\":\"$$.State.EnteredTime\"}},\"UpdateExpression\":\"SET #s = :status, updatedAt = :updatedAt\"}},\"PollyTask\":{\"Next\":\"MarkCompleted\",\"Retry\":[{\"ErrorEquals\":[\"States.TaskFailed\",\"Polly.ServiceException\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"States.TaskFailed\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.pollyResult\",\"Resource\":\"arn:",
+              "\",\"ExpressionAttributeNames\":{\"#s\":\"status\"},\"ExpressionAttributeValues\":{\":status\":{\"S\":\"FAILED\"},\":updatedAt\":{\"S.$\":\"$$.State.EnteredTime\"}},\"UpdateExpression\":\"SET #s = :status, updatedAt = :updatedAt\"}},\"PollyTask\":{\"Next\":\"MarkCompleted\",\"Retry\":[{\"ErrorEquals\":[\"States.TaskFailed\",\"Polly.ServiceException\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"States.TaskFailed\",\"Polly.ServiceException\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.pollyResult\",\"Resource\":\"arn:",
               {
                 "Ref": "AWS::Partition"
               },
-              ":states:::aws-sdk:polly:synthesizeSpeech\",\"Parameters\":{\"OutputFormat\":\"mp3\",\"Text\":\"Welcome to your sleep audio session. Relax and breathe deeply.\",\"VoiceId\":\"Joanna\"}},\"ProcessAudio\":{\"Next\":\"PollyTask\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2},{\"ErrorEquals\":[\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.processorResult\",\"Resource\":\"arn:",
+              ":states:::aws-sdk:polly:synthesizeSpeech\",\"Parameters\":{\"OutputFormat\":\"mp3\",\"Text\":\"Welcome to your sleep audio session. Relax and breathe deeply.\",\"VoiceId\":\"Joanna\"}},\"ProcessAudio\":{\"Next\":\"PollyTask\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.processorResult\",\"Resource\":\"arn:",
               {
                 "Ref": "AWS::Partition"
               },
@@ -759,6 +764,11 @@
     },
     "StateMachineExecutionsFailedAlarm5C3FF4E9": {
       "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "SleepAudioPipelineFailedFEA65EAA"
+          }
+        ],
         "AlarmDescription": "Alarm when state machine executions fail",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "Dimensions": [
@@ -773,7 +783,7 @@
         "MetricName": "ExecutionsFailed",
         "Namespace": "AWS/States",
         "Period": 60,
-        "Statistic": "Average",
+        "Statistic": "Sum",
         "Threshold": 1
       },
       "Type": "AWS::CloudWatch::Alarm"

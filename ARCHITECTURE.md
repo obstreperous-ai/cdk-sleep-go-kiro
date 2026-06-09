@@ -154,7 +154,7 @@ The following components are deployed in the current CDK stack:
 | **S3 Input Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), EventBridge notifications enabled, removal policy: DESTROY |
 | **S3 Output Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), removal policy: DESTROY |
 | **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name; targets the Step Functions state machine |
-| **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> ValidateInput (Choice: file extension) -> [valid] ProcessAudio (Lambda, retry: 3x) -> Polly synthesizeSpeech (retry: 3x) -> UpdateItem (COMPLETED) -> SNS Completed; [invalid/error] -> UpdateItem (FAILED) -> SNS Failed; logging at ALL level with execution data; X-Ray tracing enabled; specific error type Catch blocks on ProcessAudio (Lambda.ServiceException, Lambda.AWSLambdaException, Lambda.SdkClientException, States.TaskFailed) and PollyTask (States.TaskFailed); States.ALL fallback Catch on both |
+| **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> ValidateInput (Choice: file extension) -> [valid] ProcessAudio (Lambda, retry: 3x) -> Polly synthesizeSpeech (retry: 3x) -> UpdateItem (COMPLETED) -> SNS Completed; [invalid/error] -> UpdateItem (FAILED) -> SNS Failed; logging at ALL level with execution data; X-Ray tracing enabled; specific error type Catch blocks on ProcessAudio (Lambda.ClientExecutionTimeoutException, Lambda.ServiceException, Lambda.AWSLambdaException, Lambda.SdkClientException, States.TaskFailed) and PollyTask (States.TaskFailed, Polly.ServiceException); States.ALL fallback Catch on both |
 | **DynamoDB Table (SleepAudioMetadataTable)** | Deployed | Partition key: `audioId` (S), on-demand billing (PAY_PER_REQUEST), AWS-managed encryption (SSE), point-in-time recovery enabled, removal policy: DESTROY |
 | **CloudWatch Log Group** | Deployed | Destination for state machine execution logs; removal policy: DESTROY |
 | **SNS Topic (Completed)** | Deployed | Topic name: SleepAudioPipelineCompleted, encrypted with AWS-managed SNS KMS key (alias/aws/sns) |
@@ -196,8 +196,8 @@ The pipeline implements a layered error handling strategy with specific error ty
 
 | Task | Specific Errors | Fallback |
 |---|---|---|
-| **ProcessAudio** | `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | `States.ALL` |
-| **PollyTask** | `States.TaskFailed` | `States.ALL` |
+| **ProcessAudio** | `Lambda.ClientExecutionTimeoutException`, `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | `States.ALL` |
+| **PollyTask** | `States.TaskFailed`, `Polly.ServiceException` | `States.ALL` |
 
 **Catch Block Pattern:** Each processing task defines specific error catches first, followed by a `States.ALL` fallback. This allows the state machine to handle known transient errors differently from unexpected failures while ensuring no error goes unhandled. All Catch blocks route to the `MarkFailed` state, storing error details in `$.error`.
 
@@ -207,7 +207,7 @@ All tasks in the state machine have retry policies configured for automatic reco
 
 | Task | Errors Retried | Interval | Max Attempts | Backoff Rate |
 |---|---|---|---|---|
-| **ProcessAudio** | `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | 3s | 3 | 2.0x |
+| **ProcessAudio** | `Lambda.ClientExecutionTimeoutException`, `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | 3s | 3 | 2.0x |
 | **PollyTask** | `States.TaskFailed`, `Polly.ServiceException` | 3s | 3 | 2.0x |
 | **MarkCompleted** | `States.ALL` | 2s | 3 | 2.0x |
 | **MarkFailed** | `States.ALL` | 2s | 3 | 2.0x |
@@ -326,9 +326,9 @@ flowchart TD
     ValidateInput -->|"valid extension\n(.mp3/.wav/.m4a/.ogg/.flac)"| ProcessAudio
     ValidateInput -->|"invalid extension\n(Otherwise)"| MarkFailed
     ProcessAudio -->|success| Polly
-    ProcessAudio -->|"error / Catch\n(Lambda.ServiceException,\nStates.TaskFailed, States.ALL)"| MarkFailed
+    ProcessAudio -->|"error / Catch\n(Lambda.ClientExecutionTimeoutException,\nLambda.ServiceException,\nStates.TaskFailed, States.ALL)"| MarkFailed
     Polly -->|success| MarkCompleted
-    Polly -->|"error / Catch\n(States.TaskFailed, States.ALL)"| MarkFailed
+    Polly -->|"error / Catch\n(States.TaskFailed, Polly.ServiceException,\nStates.ALL)"| MarkFailed
     MarkCompleted -->|update COMPLETED| DDB
     MarkCompleted --> SNSOk
     MarkFailed -->|update FAILED| DDB
