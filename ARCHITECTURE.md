@@ -273,7 +273,7 @@ The Lambda processor executes the following steps when invoked:
 
 **Output file naming convention:** `processed/{audioId}/{timestamp}.mp3`
 
-Where `{audioId}` is the original audio file identifier and `{timestamp}` is a Unix timestamp in seconds at the time of processing.
+Where `{audioId}` is the original audio file identifier and `{timestamp}` is an ISO-8601 compact UTC timestamp at the time of processing (format: `20060102T150405Z`, e.g., `20260610T065318Z`).
 
 **Response struct fields:**
 
@@ -281,7 +281,7 @@ Where `{audioId}` is the original audio file identifier and `{timestamp}` is a U
 |---|---|---|
 | `status` | string | Processing result: `COMPLETED` or error message |
 | `audioId` | string | The audio file identifier |
-| `outputLocation` | string | S3 URI of the processed file (e.g., `s3://output-bucket/processed/abc123/1700000000.mp3`) |
+| `outputLocation` | string | S3 URI of the processed file (e.g., `s3://output-bucket/processed/abc123/20260610T065318Z.mp3`) |
 | `fileSize` | int64 | Size of the uploaded processed file in bytes |
 | `processingDuration` | string | Human-readable duration of the processing operation |
 

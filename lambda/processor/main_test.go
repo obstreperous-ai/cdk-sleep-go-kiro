@@ -574,13 +574,94 @@ func TestProcessor_DynamoDBUpdateFailure(t *testing.T) {
 		ObjectKey: "uploads/test.flac",
 	}
 
-	_, err := handler(context.Background(), event)
-	if err == nil {
-		t.Fatal("expected an error, got nil")
+	resp, err := handler(context.Background(), event)
+	if err != nil {
+		t.Fatalf("expected no error (DynamoDB failure on COMPLETED path is logged, not returned), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "failed to update DynamoDB") {
-		t.Errorf("expected error about DynamoDB failure, got: %v", err)
+	// Processing is considered complete even if DynamoDB update fails
+	if resp.Status != "COMPLETED" {
+		t.Errorf("expected status COMPLETED, got %s", resp.Status)
 	}
+	if resp.AudioID != "test-audio-dynamo-fail" {
+		t.Errorf("expected audioId test-audio-dynamo-fail, got %s", resp.AudioID)
+	}
+}
+
+func TestProcessor_InputBucketValidation(t *testing.T) {
+	s3Mock := &mockS3Client{}
+	dynamoMock := &mockDynamoDBClient{}
+	pollyMock := &mockPollyClient{}
+
+	proc := &Processor{
+		S3Client:       s3Mock,
+		DynamoDBClient: dynamoMock,
+		PollyClient:    pollyMock,
+		TableName:      "audio-table",
+		OutputBucket:   "output-bucket",
+		InputBucket:    "expected-input-bucket",
+	}
+
+	oldProcessor := defaultProcessor
+	defaultProcessor = proc
+	defer func() { defaultProcessor = oldProcessor }()
+
+	t.Run("mismatched bucket returns error", func(t *testing.T) {
+		event := Event{
+			AudioID:   "bucket-mismatch-test",
+			Bucket:    "wrong-bucket",
+			ObjectKey: "uploads/test.mp3",
+		}
+
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected an error for mismatched bucket, got nil")
+		}
+		if !strings.Contains(err.Error(), "does not match configured input bucket") {
+			t.Errorf("expected bucket mismatch error, got: %v", err)
+		}
+	})
+
+	t.Run("matching bucket succeeds", func(t *testing.T) {
+		event := Event{
+			AudioID:   "bucket-match-test",
+			Bucket:    "expected-input-bucket",
+			ObjectKey: "uploads/test.mp3",
+		}
+
+		resp, err := handler(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if resp.Status != "COMPLETED" {
+			t.Errorf("expected status COMPLETED, got %s", resp.Status)
+		}
+	})
+
+	t.Run("empty InputBucket skips validation", func(t *testing.T) {
+		procNoInputBucket := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "audio-table",
+			OutputBucket:   "output-bucket",
+			InputBucket:    "",
+		}
+		defaultProcessor = procNoInputBucket
+
+		event := Event{
+			AudioID:   "no-input-bucket-test",
+			Bucket:    "any-bucket",
+			ObjectKey: "uploads/test.mp3",
+		}
+
+		resp, err := handler(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected no error when InputBucket is empty, got: %v", err)
+		}
+		if resp.Status != "COMPLETED" {
+			t.Errorf("expected status COMPLETED, got %s", resp.Status)
+		}
+	})
 }
 
 func TestProcessor_ResponseContainsOutputFields(t *testing.T) {

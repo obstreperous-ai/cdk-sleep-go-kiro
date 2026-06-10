@@ -1,0 +1,25 @@
+{
+  "project_type": "AWS CDK in Go with Lambda processor (Go custom runtime provided.al2023)",
+  "language": "Go",
+  "build_system": "go build, go test, CDK CLI (cdk synth). CDK Go module (aws-cdk-go v2.255.0) cannot be downloaded in this environment due to storage.googleapis.com being blocked.",
+  "test_framework": "Go testing package with table-driven tests. CDK uses assertions.Template_FromStack for infrastructure tests. Lambda uses direct handler invocation with context.Background().",
+  "build_command": "cd lambda/processor && go build ./... (CDK root module build is not available due to network constraints)",
+  "test_command": "cd lambda/processor && go test ./... (CDK root module tests cannot run due to network constraints)",
+  "verification_instructions": "1. Run `cd lambda/processor && go test -v ./...` to verify Lambda tests pass. 2. Run `cd lambda/processor && go build ./...` to verify Lambda compiles. 3. For CDK code, use AST-level validation (go vet is not possible but syntax correctness via review). 4. Verify snapshot file testdata/snapshot.json is deleted (since template changes).",
+  "snapshot_or_generated_files": "testdata/snapshot.json - snapshot test auto-generates this file. Must be deleted when CDK template changes so it regenerates on next test run.",
+  "setup_instructions": "Lambda processor: cd lambda/processor && go mod tidy. Root CDK: dependencies cannot be fetched (storage.googleapis.com blocked).",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode. storage.googleapis.com is blocked, preventing download of aws-cdk-go/awscdk/v2 module. Lambda processor dependencies (aws-lambda-go, aws-sdk-go-v2 and its service packages) ARE downloadable from proxy.golang.org. CDK root module tests and cdk synth cannot run. Validation for CDK code changes must be done via code review and AST correctness only. Lambda code can be fully built and tested.",
+  "contribution_requirements": "Strict TDD: write failing tests first, then minimal implementation. Update ARCHITECTURE.md with Mermaid diagram. Conventional commit messages. Run go test ./... and cdk synth before pushing (cdk synth not possible in this env).",
+  "key_patterns": "Lambda handler uses interface-free direct function invocation. Tests use table-driven test pattern. CDK tests use assertions.Template_FromStack with HasResourceProperties and Match_* helpers. Structured JSON logging via manual json.Marshal to stdout. Event/Response structs for Lambda I/O. Environment variables TABLE_NAME and OUTPUT_BUCKET_NAME passed to Lambda.",
+  "relevant_files": [
+    "lambda/processor/main.go",
+    "lambda/processor/main_test.go",
+    "lambda/processor/go.mod",
+    "lambda/processor/go.sum",
+    "cdk-base.go",
+    "cdk-base_test.go",
+    "ARCHITECTURE.md",
+    "testdata/snapshot.json"
+  ],
+  "directory_structure": "Root: CDK app (cdk-base.go, pipeline.go, *_test.go, go.mod). lambda/processor/: separate Go module with Lambda handler. testdata/: snapshot golden file. .github/workflows/ci.yml: CI config."
+}

@@ -44,6 +44,7 @@ type Processor struct {
 	PollyClient    PollyClient
 	TableName      string
 	OutputBucket   string
+	InputBucket    string
 }
 
 // Event represents the input from the Step Functions state machine.
@@ -154,7 +155,16 @@ func handler(ctx context.Context, event Event) (Response, error) {
 
 // Process performs the full audio processing pipeline.
 func (p *Processor) Process(ctx context.Context, event Event, requestID string, startTime time.Time) (Response, error) {
-	// Step 1: Download the audio file from S3 input bucket
+	// Validate that the event bucket matches the configured input bucket (if set)
+	if p.InputBucket != "" && event.Bucket != p.InputBucket {
+		structuredLog("error", fmt.Sprintf("bucket mismatch: event bucket %q does not match configured input bucket %q", event.Bucket, p.InputBucket), requestID, event.AudioID, event.Bucket, event.ObjectKey)
+		return Response{}, fmt.Errorf("validation error: event bucket %q does not match configured input bucket %q", event.Bucket, p.InputBucket)
+	}
+
+	// Step 1: Download the audio file from S3 input bucket.
+	// The S3 GetObject call verifies the file exists and is accessible before processing.
+	// In the current implementation, Polly generates the sleep audio directly. Future
+	// iterations will read the input and merge it with synthesized audio.
 	structuredLog("info", "Downloading from S3", requestID, event.AudioID, event.Bucket, event.ObjectKey)
 	getOutput, err := p.S3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(event.Bucket),
@@ -187,7 +197,8 @@ func (p *Processor) Process(ctx context.Context, event Event, requestID string, 
 	// Read the Polly audio output
 	var audioData []byte
 	if pollyOutput.AudioStream != nil {
-		audioData, err = io.ReadAll(pollyOutput.AudioStream)
+		// Limit read to 10MB to prevent memory exhaustion if the stream misbehaves
+		audioData, err = io.ReadAll(io.LimitReader(pollyOutput.AudioStream, 10*1024*1024))
 		if err != nil {
 			structuredLog("error", "Failed to read Polly audio stream", requestID, event.AudioID, event.Bucket, event.ObjectKey)
 			p.updateDynamoDBStatus(ctx, event.AudioID, "FAILED", "", 0)
@@ -216,11 +227,12 @@ func (p *Processor) Process(ctx context.Context, event Event, requestID string, 
 	}
 
 	// Step 4: Update DynamoDB record with COMPLETED status
+	// If DynamoDB update fails after successful S3 upload, log the error but still
+	// return success. The Step Functions MarkCompleted state will update DynamoDB anyway.
 	structuredLog("info", "Updating DynamoDB record", requestID, event.AudioID, event.Bucket, event.ObjectKey)
 	err = p.updateDynamoDBStatus(ctx, event.AudioID, "COMPLETED", outputLocation, fileSize)
 	if err != nil {
-		structuredLog("error", "DynamoDB UpdateItem failed", requestID, event.AudioID, event.Bucket, event.ObjectKey)
-		return Response{}, fmt.Errorf("failed to update DynamoDB: %w", err)
+		structuredLog("error", fmt.Sprintf("DynamoDB UpdateItem failed after successful processing: %v", err), requestID, event.AudioID, event.Bucket, event.ObjectKey)
 	}
 
 	processingDuration := time.Since(startTime).String()
@@ -286,6 +298,7 @@ func main() {
 	// Read environment variables
 	tableName := os.Getenv("TABLE_NAME")
 	outputBucket := os.Getenv("OUTPUT_BUCKET_NAME")
+	inputBucket := os.Getenv("INPUT_BUCKET_NAME")
 
 	// Initialize the processor
 	defaultProcessor = &Processor{
@@ -294,6 +307,7 @@ func main() {
 		PollyClient:    pollyClient,
 		TableName:      tableName,
 		OutputBucket:   outputBucket,
+		InputBucket:    inputBucket,
 	}
 
 	lambda.Start(handler)
