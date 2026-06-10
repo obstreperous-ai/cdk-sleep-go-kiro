@@ -96,6 +96,32 @@
       },
       "Type": "AWS::Events::Rule"
     },
+    "LambdaErrorsAlarm8ED74A7D": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "SleepAudioPipelineFailedFEA65EAA"
+          }
+        ],
+        "AlarmDescription": "Alarm when Lambda function errors occur",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "SleepAudioProcessorF6F5D971"
+            }
+          }
+        ],
+        "EvaluationPeriods": 1,
+        "MetricName": "Errors",
+        "Namespace": "AWS/Lambda",
+        "Period": 300,
+        "Statistic": "Sum",
+        "Threshold": 1
+      },
+      "Type": "AWS::CloudWatch::Alarm"
+    },
     "SleepAudioInputBucket1923DAE4": {
       "DeletionPolicy": "Delete",
       "Properties": {
@@ -305,11 +331,11 @@
               {
                 "Ref": "SleepAudioMetadataTableD77D3179"
               },
-              "\",\"ExpressionAttributeNames\":{\"#s\":\"status\"},\"ExpressionAttributeValues\":{\":status\":{\"S\":\"FAILED\"},\":updatedAt\":{\"S.$\":\"$$.State.EnteredTime\"}},\"UpdateExpression\":\"SET #s = :status, updatedAt = :updatedAt\"}},\"PollyTask\":{\"Next\":\"MarkCompleted\",\"Catch\":[{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.pollyResult\",\"Resource\":\"arn:",
+              "\",\"ExpressionAttributeNames\":{\"#s\":\"status\"},\"ExpressionAttributeValues\":{\":status\":{\"S\":\"FAILED\"},\":updatedAt\":{\"S.$\":\"$$.State.EnteredTime\"}},\"UpdateExpression\":\"SET #s = :status, updatedAt = :updatedAt\"}},\"PollyTask\":{\"Next\":\"MarkCompleted\",\"Retry\":[{\"ErrorEquals\":[\"States.TaskFailed\",\"Polly.ServiceException\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"States.TaskFailed\",\"Polly.ServiceException\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.pollyResult\",\"Resource\":\"arn:",
               {
                 "Ref": "AWS::Partition"
               },
-              ":states:::aws-sdk:polly:synthesizeSpeech\",\"Parameters\":{\"OutputFormat\":\"mp3\",\"Text\":\"Welcome to your sleep audio session. Relax and breathe deeply.\",\"VoiceId\":\"Joanna\"}},\"ProcessAudio\":{\"Next\":\"PollyTask\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.processorResult\",\"Resource\":\"arn:",
+              ":states:::aws-sdk:polly:synthesizeSpeech\",\"Parameters\":{\"OutputFormat\":\"mp3\",\"Text\":\"Welcome to your sleep audio session. Relax and breathe deeply.\",\"VoiceId\":\"Joanna\"}},\"ProcessAudio\":{\"Next\":\"PollyTask\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"IntervalSeconds\":3,\"MaxAttempts\":3,\"BackoffRate\":2}],\"Catch\":[{\"ErrorEquals\":[\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\",\"States.TaskFailed\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"},{\"ErrorEquals\":[\"States.ALL\"],\"ResultPath\":\"$.error\",\"Next\":\"MarkFailed\"}],\"Type\":\"Task\",\"ResultPath\":\"$.processorResult\",\"Resource\":\"arn:",
               {
                 "Ref": "AWS::Partition"
               },
@@ -583,7 +609,7 @@
           "S3Bucket": {
             "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
           },
-          "S3Key": "2a426804bce7a76bafd5f74586b576cf24993b6cc769e9e207c89a4940eb23ac.zip"
+          "S3Key": "22c4ec2384877c22e763da9d73f869515fbf12d10055e3cb55c47d26412bfda5.zip"
         },
         "Environment": {
           "Variables": {
@@ -602,7 +628,10 @@
             "Arn"
           ]
         },
-        "Runtime": "provided.al2023"
+        "Runtime": "provided.al2023",
+        "TracingConfig": {
+          "Mode": "Active"
+        }
       },
       "Type": "AWS::Lambda::Function"
     },
@@ -641,6 +670,14 @@
       "Properties": {
         "PolicyDocument": {
           "Statement": [
+            {
+              "Action": [
+                "xray:PutTraceSegments",
+                "xray:PutTelemetryRecords"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            },
             {
               "Action": [
                 "dynamodb:BatchGetItem",
@@ -724,6 +761,32 @@
         ]
       },
       "Type": "AWS::IAM::Policy"
+    },
+    "StateMachineExecutionsFailedAlarm5C3FF4E9": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "SleepAudioPipelineFailedFEA65EAA"
+          }
+        ],
+        "AlarmDescription": "Alarm when state machine executions fail",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Dimensions": [
+          {
+            "Name": "StateMachineArn",
+            "Value": {
+              "Ref": "SleepAudioPipelineStateMachine741D1700"
+            }
+          }
+        ],
+        "EvaluationPeriods": 1,
+        "MetricName": "ExecutionsFailed",
+        "Namespace": "AWS/States",
+        "Period": 60,
+        "Statistic": "Sum",
+        "Threshold": 1
+      },
+      "Type": "AWS::CloudWatch::Alarm"
     }
   },
   "Rules": {

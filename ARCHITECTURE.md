@@ -154,12 +154,12 @@ The following components are deployed in the current CDK stack:
 | **S3 Input Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), EventBridge notifications enabled, removal policy: DESTROY |
 | **S3 Output Bucket** | Deployed | Encryption: S3-managed (AES256), versioning enabled, block public access (all four settings), removal policy: DESTROY |
 | **EventBridge Rule** | Deployed | Matches `Object Created` events from `aws.s3` source filtered by input bucket name; targets the Step Functions state machine |
-| **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> ValidateInput (Choice: file extension) -> [valid] ProcessAudio (Lambda) -> Polly synthesizeSpeech -> UpdateItem (COMPLETED) -> SNS Completed; [invalid/error] -> UpdateItem (FAILED) -> SNS Failed; logging at ALL level with execution data; X-Ray tracing enabled |
+| **Step Functions State Machine** | Deployed | Chain: PutItem (DynamoDB) -> ValidateInput (Choice: file extension) -> [valid] ProcessAudio (Lambda, retry: 3x) -> Polly synthesizeSpeech (retry: 3x) -> UpdateItem (COMPLETED) -> SNS Completed; [invalid/error] -> UpdateItem (FAILED) -> SNS Failed; logging at ALL level with execution data; X-Ray tracing enabled; specific error type Catch blocks on ProcessAudio (Lambda.ClientExecutionTimeoutException, Lambda.ServiceException, Lambda.AWSLambdaException, Lambda.SdkClientException, States.TaskFailed) and PollyTask (States.TaskFailed, Polly.ServiceException); States.ALL fallback Catch on both |
 | **DynamoDB Table (SleepAudioMetadataTable)** | Deployed | Partition key: `audioId` (S), on-demand billing (PAY_PER_REQUEST), AWS-managed encryption (SSE), point-in-time recovery enabled, removal policy: DESTROY |
 | **CloudWatch Log Group** | Deployed | Destination for state machine execution logs; removal policy: DESTROY |
 | **SNS Topic (Completed)** | Deployed | Topic name: SleepAudioPipelineCompleted, encrypted with AWS-managed SNS KMS key (alias/aws/sns) |
 | **SNS Topic (Failed)** | Deployed | Topic name: SleepAudioPipelineFailed, encrypted with AWS-managed SNS KMS key (alias/aws/sns) |
-| **Lambda (SleepAudioProcessor)** | Deployed | Runtime: provided.al2023 (Go custom runtime), handler: bootstrap, wired to Lambda runtime API via `lambda.Start(handler)`, validates required fields and file extension, environment: TABLE_NAME + OUTPUT_BUCKET_NAME, IAM: DynamoDB read/write on metadata table |
+| **Lambda (SleepAudioProcessor)** | Deployed | Runtime: provided.al2023 (Go custom runtime), handler: bootstrap, wired to Lambda runtime API via `lambda.Start(handler)`, validates required fields and file extension, environment: TABLE_NAME + OUTPUT_BUCKET_NAME, IAM: DynamoDB read/write on metadata table, X-Ray tracing: ACTIVE, structured JSON logging |
 
 ### Metadata Layer
 
@@ -187,6 +187,41 @@ The Step Functions state machine (`SleepAudioPipelineStateMachine`) serves as th
 **Error Handling:** If the ProcessAudio Lambda or Polly task fails (any error), the Catch clause transitions execution to the **MarkFailed** state (DynamoDB UpdateItem), which sets `status=FAILED` and records the `updatedAt` timestamp. If the ValidateInput Choice state determines the file extension is invalid, it also routes directly to MarkFailed. After marking the failure, execution proceeds to **NotifyFailed** (SNS Publish), which publishes a failure notification to the `SleepAudioPipelineFailed` SNS topic with the audio ID, status, and error details. This ensures the metadata table always reflects the true state of each job and downstream consumers are notified of both outcomes.
 
 Both MarkCompleted/MarkFailed and NotifyCompleted/NotifyFailed have built-in retry policies (3 attempts with exponential backoff). NotifyCompleted and NotifyFailed also have Catch clauses with fallback Pass states so that SNS delivery failure does not prevent the state machine from completing.
+
+#### Error Handling Strategy
+
+The pipeline implements a layered error handling strategy with specific error type matching and automatic retries:
+
+**Specific Error Types Caught:**
+
+| Task | Specific Errors | Fallback |
+|---|---|---|
+| **ProcessAudio** | `Lambda.ClientExecutionTimeoutException`, `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | `States.ALL` |
+| **PollyTask** | `States.TaskFailed`, `Polly.ServiceException` | `States.ALL` |
+
+**Catch Block Pattern:** Each processing task defines specific error catches first, followed by a `States.ALL` fallback. This allows the state machine to handle known transient errors differently from unexpected failures while ensuring no error goes unhandled. All Catch blocks route to the `MarkFailed` state, storing error details in `$.error`.
+
+**Retry Policies:**
+
+All tasks in the state machine have retry policies configured for automatic recovery from transient failures:
+
+| Task | Errors Retried | Interval | Max Attempts | Backoff Rate |
+|---|---|---|---|---|
+| **ProcessAudio** | `Lambda.ClientExecutionTimeoutException`, `Lambda.ServiceException`, `Lambda.AWSLambdaException`, `Lambda.SdkClientException`, `States.TaskFailed` | 3s | 3 | 2.0x |
+| **PollyTask** | `States.TaskFailed`, `Polly.ServiceException` | 3s | 3 | 2.0x |
+| **MarkCompleted** | `States.ALL` | 2s | 3 | 2.0x |
+| **MarkFailed** | `States.ALL` | 2s | 3 | 2.0x |
+| **NotifyCompleted** | `States.ALL` | 2s | 3 | 2.0x |
+| **NotifyFailed** | `States.ALL` | 2s | 3 | 2.0x |
+
+**Fallback Pattern:**
+
+1. A task encounters an error during execution.
+2. The retry policy evaluates whether the error matches a retryable type. If yes, the task is retried up to the configured max attempts with exponential backoff.
+3. If retries are exhausted (or the error does not match a retryable type), the Catch block evaluates the error:
+   - Specific error Catch blocks fire first (e.g., `Lambda.ServiceException`).
+   - If no specific Catch matches, the `States.ALL` fallback Catch fires.
+4. The Catch transitions execution to `MarkFailed`, which records the failure in DynamoDB and proceeds to `NotifyFailed`.
 
 The state machine is configured with:
 
@@ -267,17 +302,19 @@ flowchart TD
 
     S3In["S3 Input Bucket\n(encrypted, versioned,\nEventBridge enabled)"]
     EB["EventBridge Rule\n(Object Created)"]
-    SFN["Step Functions\nState Machine"]
+    SFN["Step Functions\nState Machine\n(X-Ray tracing enabled)"]
     PutItem["WriteInitialRecord\n(DynamoDB PutItem)\nstatus=PROCESSING"]
     ValidateInput{"ValidateInput\n(Choice: check file extension)"}
-    ProcessAudio["ProcessAudio\n(Lambda: SleepAudioProcessor)"]
-    Polly["Polly Task\n(synthesizeSpeech)"]
-    MarkCompleted["MarkCompleted\n(DynamoDB UpdateItem)\nstatus=COMPLETED"]
-    MarkFailed["MarkFailed\n(DynamoDB UpdateItem)\nstatus=FAILED"]
+    ProcessAudio["ProcessAudio\n(Lambda: SleepAudioProcessor)\n(retry: 3x, backoff: 2.0)"]
+    Polly["Polly Task\n(synthesizeSpeech)\n(retry: 3x, backoff: 2.0)"]
+    MarkCompleted["MarkCompleted\n(DynamoDB UpdateItem)\nstatus=COMPLETED\n(retry: 3x)"]
+    MarkFailed["MarkFailed\n(DynamoDB UpdateItem)\nstatus=FAILED\n(retry: 3x)"]
     SNSOk["SNS: PipelineCompleted\n(encrypted)"]
     SNSErr["SNS: PipelineFailed\n(encrypted)"]
     DDB["DynamoDB\n(SleepAudioMetadataTable)"]
     CWLogs["CloudWatch Log Group\n(execution logs)"]
+    CWAlarms["CloudWatch Alarms\n(ExecutionsFailed, Lambda Errors)"]
+    XRay["AWS X-Ray\n(distributed tracing)"]
     S3Out["S3 Output Bucket\n(encrypted, versioned)"]
 
     Client -->|upload| S3In
@@ -289,14 +326,19 @@ flowchart TD
     ValidateInput -->|"valid extension\n(.mp3/.wav/.m4a/.ogg/.flac)"| ProcessAudio
     ValidateInput -->|"invalid extension\n(Otherwise)"| MarkFailed
     ProcessAudio -->|success| Polly
-    ProcessAudio -->|error / Catch| MarkFailed
+    ProcessAudio -->|"error / Catch\n(Lambda.ClientExecutionTimeoutException,\nLambda.ServiceException,\nStates.TaskFailed, States.ALL)"| MarkFailed
     Polly -->|success| MarkCompleted
-    Polly -->|error / Catch| MarkFailed
+    Polly -->|"error / Catch\n(States.TaskFailed, Polly.ServiceException,\nStates.ALL)"| MarkFailed
     MarkCompleted -->|update COMPLETED| DDB
     MarkCompleted --> SNSOk
     MarkFailed -->|update FAILED| DDB
     MarkFailed --> SNSErr
     SFN -. logs .-> CWLogs
+    CWAlarms -. "monitors\nExecutionsFailed" .-> SFN
+    CWAlarms -. "monitors\nLambda Errors" .-> ProcessAudio
+    CWAlarms -->|alarm action| SNSErr
+    SFN -. traces .-> XRay
+    ProcessAudio -. traces .-> XRay
     Polly -.->|future: write processed audio| S3Out
 ```
 
@@ -354,6 +396,26 @@ Each Lambda function and Step Functions state machine is assigned a **dedicated 
 
 ## Observability
 
+### Lambda X-Ray Tracing
+
+The SleepAudioProcessor Lambda function has X-Ray active tracing enabled (`Tracing: ACTIVE`). This provides distributed tracing visibility across the full pipeline, allowing correlation of Lambda invocations with their upstream Step Functions execution and downstream AWS service calls. X-Ray segments capture latency, errors, and throttling at each service boundary.
+
+### Structured JSON Logging
+
+The Lambda handler emits structured JSON log lines to stdout (which CloudWatch Logs captures automatically). Each log entry contains the following fields:
+
+| Field | Description |
+|---|---|
+| `level` | Log severity (`info` or `error`) |
+| `msg` | Human-readable message describing the event |
+| `requestId` | AWS Lambda request ID for correlation |
+| `audioId` | The audio file identifier being processed |
+| `bucket` | Source S3 bucket name |
+| `objectKey` | Source S3 object key |
+| `timestamp` | ISO 8601 UTC timestamp (RFC3339 format) |
+
+This format enables CloudWatch Logs Insights queries and metric filter creation without parsing unstructured text.
+
 ### CloudWatch Logs
 
 All Lambda functions and the Step Functions state machine are configured to emit structured JSON logs to dedicated CloudWatch Log Groups:
@@ -368,17 +430,27 @@ Log retention is set per environment (e.g., 7 days in `dev`, 90 days in `prod`).
 
 ### CloudWatch Alarms
 
-| Alarm | Metric | Threshold | Action |
-|---|---|---|---|
-| Lambda error rate | `Errors / Invocations` | > 5% over 5 min | Notify SNS Error Topic |
-| Step Functions execution failures | `ExecutionsFailed` | >= 1 in 1 min | Notify SNS Error Topic |
-| Step Functions throttles | `ExecutionThrottled` | >= 1 in 1 min | Notify SNS Error Topic |
-| DynamoDB throttles | `ThrottledRequests` | >= 5 in 5 min | Notify SNS Error Topic |
-| S3 4xx errors on input bucket | `4xxErrors` | >= 10 in 5 min | Notify SNS Error Topic |
+The following alarms are deployed to detect failures and trigger automated notifications:
+
+| Alarm | Metric (Namespace) | Dimension | Threshold | Period | Evaluation Periods | Action |
+|---|---|---|---|---|---|---|
+| StateMachineExecutionsFailedAlarm | `ExecutionsFailed` (AWS/States) | StateMachineArn | >= 1 | 1 min | 1 | SNS Failed Topic |
+| LambdaErrorsAlarm | `Errors` (AWS/Lambda) | FunctionName | >= 1 | 5 min | 1 | SNS Failed Topic |
+| Lambda error rate (planned) | `Errors / Invocations` | - | > 5% over 5 min | 5 min | - | SNS Error Topic |
+| Step Functions throttles (planned) | `ExecutionThrottled` | - | >= 1 in 1 min | 1 min | - | SNS Error Topic |
+| DynamoDB throttles (planned) | `ThrottledRequests` | - | >= 5 in 5 min | 5 min | - | SNS Error Topic |
+| S3 4xx errors on input bucket (planned) | `4xxErrors` | - | >= 10 in 5 min | 5 min | - | SNS Error Topic |
+
+Both deployed alarms use the `SleepAudioPipelineFailed` SNS topic as their alarm action, ensuring operational alerts flow through the same notification channel as pipeline failure events.
 
 ### Distributed Tracing
 
-AWS X-Ray active tracing is enabled on all Lambda functions and the Step Functions state machine, allowing end-to-end latency analysis across the full pipeline.
+AWS X-Ray active tracing is enabled on both the Lambda function and the Step Functions state machine, allowing end-to-end latency analysis across the full pipeline. This provides:
+
+- Service map visualization of the complete request flow
+- Latency breakdown per service call (Lambda, Polly, DynamoDB, SNS)
+- Error and fault rate tracking at each hop
+- Correlation of Step Functions execution with individual Lambda invocations
 
 ---
 

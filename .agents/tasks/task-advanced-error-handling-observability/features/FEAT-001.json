@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "TDD: Add failing tests for advanced error handling, retry policies on ProcessAudio/PollyTask, Lambda X-Ray tracing, structured logging, and CloudWatch Alarms. Then implement all CDK infrastructure changes and Lambda logging improvements to make tests pass.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Add new failing tests to cdk-base_test.go for: (a) ProcessAudio retry configuration (verify DefinitionString contains ProcessAudio.*Retry pattern), (b) PollyTask retry configuration (verify DefinitionString contains PollyTask.*Retry pattern), (c) Lambda X-Ray tracing (verify AWS::Lambda::Function has TracingConfig.Mode=Active), (d) CloudWatch Alarms exist (verify AWS::CloudWatch::Alarm resource count >= 2, and specific alarms for StateMachine ExecutionsFailed and Lambda Errors metrics), (e) Specific error types in Catch blocks (verify DefinitionString contains Lambda.ServiceException and States.TaskFailed error type strings).",
+    "Step 2 - Add failing tests to lambda/processor/main_test.go verifying that the handler output includes structured JSON log fields (by capturing log output and checking for JSON format with fields like level, msg, requestId, audioId).",
+    "Step 3 - In cdk-base.go, add retry policies on processAudio (LambdaInvoke) task: AddRetry with Errors [Lambda.ServiceException, Lambda.AWSLambdaException, Lambda.SdkClientException, States.TaskFailed], Interval 3s, MaxAttempts 3, BackoffRate 2.0.",
+    "Step 4 - In cdk-base.go, add retry policies on pollyTask (CallAwsService): AddRetry with Errors [States.TaskFailed, Polly.ServiceException], Interval 3s, MaxAttempts 3, BackoffRate 2.0.",
+    "Step 5 - In cdk-base.go, update the existing Catch blocks on processAudio and pollyTask to use specific error types instead of relying solely on the default States.ALL catch. Add specific Catch for [Lambda.ServiceException, States.TaskFailed] on processAudio and [States.TaskFailed] on pollyTask, both routing to markFailed with ResultPath $.error. The existing States.ALL catch remains as a final fallback.",
+    "Step 6 - In cdk-base.go, enable X-Ray tracing on the processorLambda by adding Tracing: awslambda.Tracing_ACTIVE to the function props.",
+    "Step 7 - In cdk-base.go, add CloudWatch Alarms: (a) StateMachine ExecutionsFailed alarm (threshold >= 1, period 1 minute, evaluation periods 1, ComparisonOperator GREATER_THAN_OR_EQUAL_TO_THRESHOLD), (b) Lambda Errors alarm (threshold >= 1, period 5 minutes, evaluation periods 1). Use awscloudwatch.NewAlarm or awscloudwatch.NewMetricAlarm. These alarms should optionally use the failedTopic as the alarm action.",
+    "Step 8 - In cdk-base.go, optionally add a basic CloudWatch Dashboard skeleton with widgets for state machine executions and Lambda invocations/errors metrics.",
+    "Step 9 - In lambda/processor/main.go, replace the current log.Printf/fmt.Printf logging with structured JSON logging. Use encoding/json to emit log lines as JSON objects with fields: level, msg, requestId (from Lambda context), audioId, bucket, objectKey, timestamp. Import the context package's aws-lambda-go/lambdacontext for request ID extraction.",
+    "Step 10 - Delete testdata/snapshot.json and re-run go test ./... to regenerate the snapshot with the new template changes.",
+    "Step 11 - Run all tests (CDK + Lambda) and confirm they pass."
+  ],
+  "acceptance_criteria": [
+    "go test -count=1 ./... passes in the root directory (CDK tests including new tests for retries, alarms, X-Ray, error types)",
+    "go test -count=1 ./... passes in lambda/processor/ (Lambda tests including structured logging verification)",
+    "testdata/snapshot.json is regenerated and matches the new synthesized template",
+    "ProcessAudio and PollyTask tasks have retry configurations in the state machine definition",
+    "Lambda function has TracingConfig with Mode=Active in the CloudFormation template",
+    "At least 2 CloudWatch Alarms exist in the stack (ExecutionsFailed + Lambda Errors)",
+    "State machine definition contains specific error type strings (Lambda.ServiceException, States.TaskFailed)",
+    "Lambda handler emits structured JSON log lines with level, msg, audioId fields"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro && NODE_OPTIONS=\"\" GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK=* GONOSUMDB=* GOSUMDB=off go test -count=1 -v ./...",
+    "cd /projects/sandbox/cdk-sleep-go-kiro/lambda/processor && NODE_OPTIONS=\"\" GOPROXY=https://proxy.golang.org,direct GONOSUMCHECK=* GONOSUMDB=* GOSUMDB=off go test -count=1 -v ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "Feature was already implemented in commit d4ead36. All CDK tests pass (root ./...) and all Lambda tests pass (lambda/processor ./...). Snapshot regenerated. Verified all acceptance criteria met."
+}

@@ -1,0 +1,25 @@
+{
+  "id": "FEAT-002",
+  "type": "docs",
+  "description": "Update ARCHITECTURE.md to document the advanced error handling strategy (specific error types, retry policies on all tasks), observability improvements (Lambda X-Ray, CloudWatch Alarms, structured logging, optional Dashboard), and update the Mermaid diagram to show retry/error flows and observability components.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - In ARCHITECTURE.md, update the 'Implemented Components' table to reflect: Lambda now has X-Ray tracing enabled; ProcessAudio and PollyTask now have retry policies; Catch blocks use specific error types.",
+    "Step 2 - In ARCHITECTURE.md, add or expand an 'Error Handling Strategy' subsection under the Orchestration Layer documenting: (a) specific error types caught (Lambda.ServiceException, Lambda.AWSLambdaException, Lambda.SdkClientException, States.TaskFailed, Polly.ServiceException), (b) retry policies on all tasks with their configurations, (c) the fallback pattern (specific catches first, States.ALL as final fallback).",
+    "Step 3 - In ARCHITECTURE.md, update the 'Observability' section to document: (a) Lambda X-Ray tracing enabled, (b) structured JSON logging format in Lambda, (c) CloudWatch Alarms for ExecutionsFailed and Lambda Errors with their thresholds, (d) optional CloudWatch Dashboard.",
+    "Step 4 - Update the Mermaid diagram to show: retry annotations on ProcessAudio and PollyTask, CloudWatch Alarms component connected to the state machine and Lambda, and the structured logging flow from Lambda to CloudWatch Logs."
+  ],
+  "acceptance_criteria": [
+    "ARCHITECTURE.md contains documentation of specific error types in Catch blocks",
+    "ARCHITECTURE.md documents retry policies on ProcessAudio and PollyTask",
+    "ARCHITECTURE.md documents Lambda X-Ray tracing and structured JSON logging",
+    "ARCHITECTURE.md documents CloudWatch Alarms with their metric/threshold configuration",
+    "Mermaid diagram shows observability components (Alarms, X-Ray) and retry annotations"
+  ],
+  "verification": [
+    "Read ARCHITECTURE.md and verify it contains sections on advanced error handling, retry policies for ProcessAudio/PollyTask, Lambda X-Ray, structured logging, and CloudWatch Alarms",
+    "Verify the Mermaid diagram is valid and includes retry/alarm annotations"
+  ],
+  "blocked_reason": null,
+  "findings": "Documentation-only change. Updated all four sections as specified: Implemented Components table, Error Handling Strategy subsection, Observability section, and Current State Diagram with retry annotations and CloudWatch Alarms connections."
+}
