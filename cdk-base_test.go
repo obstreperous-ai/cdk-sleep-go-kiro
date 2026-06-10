@@ -752,6 +752,52 @@ func TestLambdaHasOutputBucketWritePermission(t *testing.T) {
 	})
 }
 
+func TestLambdaFunctionHasInputBucketEnv(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda must have INPUT_BUCKET_NAME environment variable
+	template.HasResourceProperties(jsii.String("AWS::Lambda::Function"), map[string]interface{}{
+		"Environment": map[string]interface{}{
+			"Variables": map[string]interface{}{
+				"INPUT_BUCKET_NAME": assertions.Match_AnyValue(),
+			},
+		},
+	})
+}
+
+func TestLambdaHasInputBucketReadPermission(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Lambda execution role must have S3 read permissions for the input bucket
+	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Action": assertions.Match_ArrayWith(&[]interface{}{
+						"s3:GetObject",
+						"s3:GetBucketLocation",
+						"s3:ListBucket",
+					}),
+					"Effect": "Allow",
+				}),
+			}),
+		},
+		"Roles": assertions.Match_ArrayWith(&[]interface{}{
+			map[string]interface{}{
+				"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioProcessor")),
+			},
+		}),
+	})
+}
+
 // --- Step 1: Expanded Integration Tests ---
 
 func TestStateMachineFullSuccessPath(t *testing.T) {

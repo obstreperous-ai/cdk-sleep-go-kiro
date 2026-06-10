@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Update CDK infrastructure to grant the Lambda function S3 read access on the input bucket (currently only has write on output bucket and DynamoDB access), add INPUT_BUCKET_NAME environment variable, and update cdk-base_test.go to verify the new permissions and env var. Also update ARCHITECTURE.md to reflect the now-functional audio processing pipeline with detailed processing steps and output handling. Delete testdata/snapshot.json since the CDK template will change.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1 - Write failing tests FIRST in cdk-base_test.go: (a) test that Lambda has INPUT_BUCKET_NAME environment variable, (b) test that Lambda execution role has s3:GetObject permission on the input bucket (via GrantRead). Follow the existing test pattern using assertions.Template_FromStack and HasResourceProperties.",
+    "Step 2 - Update cdk-base.go to: (a) grant the processorLambda read access to the inputBucket using inputBucket.GrantRead(processorLambda, nil), (b) add INPUT_BUCKET_NAME environment variable to the Lambda's Environment map referencing inputBucket.BucketName().",
+    "Step 3 - Delete testdata/snapshot.json since the CDK template has changed (the snapshot test will regenerate it on next run).",
+    "Step 4 - Update ARCHITECTURE.md: (a) Update the 'Processing Layer' section to describe the full audio processing flow (download -> Polly synthesis -> upload -> DynamoDB update), (b) Update the Lambda's documented permissions to include S3 read on input bucket, (c) Add a new subsection 'Audio Processing Flow' describing the step-by-step processing, (d) Update the Mermaid 'Current State Diagram' to show the Lambda actually reading from S3 input bucket and writing to S3 output bucket (remove the 'future:' annotation on the S3Out connection), (e) Add output file naming convention (processed/{audioId}/{timestamp}.mp3), (f) Document the expanded Response struct fields.",
+    "Step 5 - Ensure the CDK code compiles syntactically (review for correctness since go build cannot run for the root module)."
+  ],
+  "acceptance_criteria": [
+    "cdk-base_test.go includes test for INPUT_BUCKET_NAME environment variable on the Lambda",
+    "cdk-base_test.go includes test for S3 read permission (s3:GetObject) on the Lambda execution role for the input bucket",
+    "cdk-base.go grants inputBucket read access to processorLambda and adds INPUT_BUCKET_NAME to Lambda environment",
+    "testdata/snapshot.json is deleted",
+    "ARCHITECTURE.md accurately describes the full processing pipeline including download, Polly synthesis, upload, and DynamoDB update",
+    "ARCHITECTURE.md Mermaid diagram shows Lambda reading from S3 input and writing to S3 output (no 'future:' annotation)"
+  ],
+  "verification": [
+    "Verify testdata/snapshot.json does not exist",
+    "Verify cdk-base.go contains inputBucket.GrantRead and INPUT_BUCKET_NAME in the environment map",
+    "Verify cdk-base_test.go contains new test functions for INPUT_BUCKET_NAME and S3 read permissions",
+    "Verify ARCHITECTURE.md contains updated processing flow documentation"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

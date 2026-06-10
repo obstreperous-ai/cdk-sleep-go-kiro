@@ -243,13 +243,13 @@ Both topics are encrypted at rest using the AWS-managed SNS KMS key (`alias/aws/
 
 ### Processing Layer
 
-The **SleepAudioProcessor** Lambda function performs input validation and serves as the primary processing step in the pipeline. It is integrated into the Step Functions state machine as the `ProcessAudio` step, positioned after the `ValidateInput` Choice state and before `PollyTask`.
+The **SleepAudioProcessor** Lambda function performs input validation and full audio processing as the primary processing step in the pipeline. It is integrated into the Step Functions state machine as the `ProcessAudio` step, positioned after the `ValidateInput` Choice state and before `PollyTask`.
 
 - **Runtime:** `provided.al2023` (Go custom runtime with `bootstrap` handler)
 - **Source:** `lambda/processor/main.go` - a Go handler wired to the AWS Lambda runtime API via `lambda.Start(handler)`
-- **Environment:** `TABLE_NAME` referencing the DynamoDB metadata table; `OUTPUT_BUCKET_NAME` referencing the S3 output bucket
-- **Permissions:** Full read/write access to the `SleepAudioMetadataTable` via `GrantReadWriteData`
-- **Error Handling:** Catch clause transitions to `MarkFailed` on any error
+- **Environment:** `TABLE_NAME` referencing the DynamoDB metadata table; `OUTPUT_BUCKET_NAME` referencing the S3 output bucket; `INPUT_BUCKET_NAME` referencing the S3 input bucket
+- **Permissions:** Full read/write access to the `SleepAudioMetadataTable` via `GrantReadWriteData`; S3 write access to the output bucket via `GrantWrite`; S3 read access to the input bucket via `GrantRead`
+- **Error Handling:** Catch clause transitions to `MarkFailed` on any error; graceful degradation updates DynamoDB with FAILED status before returning errors
 
 **Validation logic performed by the Lambda handler:**
 
@@ -258,7 +258,39 @@ The **SleepAudioProcessor** Lambda function performs input validation and serves
 3. Checks that `objectKey` is non-empty (returns error if missing)
 4. Validates the file extension (case-insensitive) is one of: `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`
 
-If all validations pass, the handler returns a success response with `status=PROCESSED` and the `audioId`. If any check fails, it returns an error which triggers the Catch clause, routing to MarkFailed.
+If all validations pass, the handler proceeds to the full audio processing pipeline.
+
+#### Audio Processing Flow
+
+The Lambda processor executes the following steps when invoked:
+
+1. **Input Validation** - Validates required fields (`audioId`, `bucket`, `objectKey`) and file extension against the allowed list (`.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`).
+2. **S3 Download** - Downloads the source audio file from the input bucket using `s3:GetObject`. The bucket name is provided via the `INPUT_BUCKET_NAME` environment variable and validated against the event payload.
+3. **Polly Synthesis** - Calls Amazon Polly `SynthesizeSpeech` to generate soothing audio content (text: "Welcome to your sleep audio session. Relax and breathe deeply.", voice: Joanna, format: mp3).
+4. **S3 Upload** - Uploads the processed audio to the output bucket with the key pattern `processed/{audioId}/{timestamp}.mp3`. The output bucket name is provided via the `OUTPUT_BUCKET_NAME` environment variable.
+5. **DynamoDB Metadata Update** - Updates the metadata record with `status=COMPLETED`, `outputLocation` (full S3 URI of the processed file), `fileSize` (bytes of the uploaded artifact), and `updatedAt` timestamp.
+6. **Response** - Returns a structured response containing `status=COMPLETED`, `audioId`, `outputLocation`, `fileSize`, and `processingDuration`.
+
+**Output file naming convention:** `processed/{audioId}/{timestamp}.mp3`
+
+Where `{audioId}` is the original audio file identifier and `{timestamp}` is a Unix timestamp in seconds at the time of processing.
+
+**Response struct fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | Processing result: `COMPLETED` or error message |
+| `audioId` | string | The audio file identifier |
+| `outputLocation` | string | S3 URI of the processed file (e.g., `s3://output-bucket/processed/abc123/1700000000.mp3`) |
+| `fileSize` | int64 | Size of the uploaded processed file in bytes |
+| `processingDuration` | string | Human-readable duration of the processing operation |
+
+**Error handling and graceful degradation:**
+
+- If Polly synthesis fails, the handler attempts to handle the error gracefully and updates DynamoDB with `status=FAILED` before returning an error.
+- If S3 upload fails, the handler returns an error that triggers the Step Functions Catch clause.
+- If DynamoDB update fails after successful processing, the error is logged but processing is considered complete.
+- All errors are logged as structured JSON to stdout for CloudWatch Logs ingestion.
 
 Note: Input validation is performed at two levels. The Step Functions Choice state (`ValidateInput`) provides fast-fail rejection of invalid file extensions before invoking any compute. The Lambda handler performs a secondary validation including required-field checks, providing defense-in-depth.
 
@@ -339,7 +371,8 @@ flowchart TD
     CWAlarms -->|alarm action| SNSErr
     SFN -. traces .-> XRay
     ProcessAudio -. traces .-> XRay
-    Polly -.->|future: write processed audio| S3Out
+    ProcessAudio -->|read input audio| S3In
+    ProcessAudio -->|write processed audio| S3Out
 ```
 
 ---
