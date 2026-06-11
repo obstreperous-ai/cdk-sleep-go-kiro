@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Implement full audio processing logic in the Lambda processor with TDD. Transform the current validation-only handler into a complete processor that: downloads input from S3, processes/generates audio via Polly, uploads output to S3 output bucket, and updates DynamoDB metadata with output location and COMPLETED status. Use interface-based dependency injection for testability with mocked AWS service clients.",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Add AWS SDK v2 dependencies to lambda/processor/go.mod: aws-sdk-go-v2, aws-sdk-go-v2/config, aws-sdk-go-v2/service/s3, aws-sdk-go-v2/service/dynamodb, aws-sdk-go-v2/service/polly, aws-sdk-go-v2/feature/s3/manager. Run go mod tidy.",
+    "Step 2 - Define interfaces in lambda/processor/main.go for S3Client (GetObject, PutObject), DynamoDBClient (UpdateItem), and PollyClient (SynthesizeSpeech). Create a Processor struct that holds these interfaces plus config (tableName, outputBucketName).",
+    "Step 3 - Write failing tests FIRST in lambda/processor/main_test.go for the new processing logic. Tests should cover: (a) successful end-to-end processing flow (download from S3 -> call Polly -> upload to S3 output -> update DynamoDB -> return structured response), (b) S3 GetObject failure handling, (c) Polly SynthesizeSpeech failure handling, (d) S3 PutObject upload failure handling, (e) DynamoDB UpdateItem failure handling, (f) response includes output S3 URI, file size, and processing duration. Use mock implementations of the interfaces.",
+    "Step 4 - Implement the processing logic in lambda/processor/main.go to make all tests pass. The handler function should: (1) validate input (keep existing validation), (2) download the audio file from S3 input bucket using GetObject, (3) call Polly SynthesizeSpeech to generate soothing audio (text: 'Welcome to your sleep audio session. Relax and breathe deeply.', voice: Joanna, format: mp3), (4) upload the result to S3 output bucket with key pattern 'processed/{audioId}/{timestamp}.mp3', (5) update DynamoDB record with status=COMPLETED, outputLocation (S3 URI), fileSize, and updatedAt timestamp, (6) return a structured Response with status=COMPLETED, audioId, outputLocation, fileSize, and processingDuration.",
+    "Step 5 - Update the Response struct to include new fields: OutputLocation, FileSize, ProcessingDuration. Update the Event struct if needed.",
+    "Step 6 - Wire real AWS SDK clients in main() function: use aws config.LoadDefaultConfig, create real S3, DynamoDB, Polly clients, read TABLE_NAME and OUTPUT_BUCKET_NAME from environment variables.",
+    "Step 7 - Ensure error handling follows graceful degradation: if Polly fails, attempt to pass through the original audio. If S3 upload fails, return an error that triggers the Step Functions Catch clause. Always attempt DynamoDB status update (FAILED) before returning errors.",
+    "Step 8 - Add INPUT_BUCKET_NAME environment variable usage (the Lambda needs to know which bucket to read from - it receives bucket name in the event but should validate it).",
+    "Step 9 - Run `cd lambda/processor && go test -v ./...` and ensure all tests pass. Run `go build ./...` to ensure it compiles."
+  ],
+  "acceptance_criteria": [
+    "Running `cd lambda/processor && go test -v ./...` passes all tests including new processing logic tests",
+    "Running `cd lambda/processor && go build ./...` succeeds without errors",
+    "The handler downloads from S3, calls Polly, uploads to output S3 bucket, and updates DynamoDB",
+    "Error cases are tested: S3 download failure, Polly failure, S3 upload failure, DynamoDB update failure",
+    "Response struct includes outputLocation, fileSize, and processingDuration fields",
+    "Graceful degradation: if Polly fails, the handler still attempts to handle the error path and update DynamoDB with FAILED status"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro/lambda/processor && go test -v ./...",
+    "cd /projects/sandbox/cdk-sleep-go-kiro/lambda/processor && go build ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "AWS SDK v2 latest versions: aws-sdk-go-v2 v1.42.0, service/s3 v1.103.3, service/dynamodb v1.59.0, service/polly v1.58.3. All download successfully from proxy.golang.org. Tests pass in 0.004s. The defaultProcessor pattern allows existing validation-only tests to work without mocks by checking for nil processor."
+}

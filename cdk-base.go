@@ -85,6 +85,7 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 		Environment: &map[string]*string{
 			"TABLE_NAME":         metadataTable.TableName(),
 			"OUTPUT_BUCKET_NAME": outputBucket.BucketName(),
+			"INPUT_BUCKET_NAME":  inputBucket.BucketName(),
 		},
 	})
 
@@ -93,6 +94,9 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// Grant Lambda write access to the output bucket for storing processed audio
 	outputBucket.GrantWrite(processorLambda, nil, nil)
+
+	// Grant Lambda read access to the input bucket for downloading source audio
+	inputBucket.GrantRead(processorLambda, nil)
 
 	// Step Functions DynamoDB PutItem task - write initial PROCESSING record
 	// ConditionExpression prevents overwriting in-flight records: only allows
