@@ -57,12 +57,12 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 			Name: jsii.String("audioId"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		BillingMode:         awsdynamodb.BillingMode_PAY_PER_REQUEST,
-		Encryption:          awsdynamodb.TableEncryption_AWS_MANAGED,
+		BillingMode: awsdynamodb.BillingMode_PAY_PER_REQUEST,
+		Encryption:  awsdynamodb.TableEncryption_AWS_MANAGED,
 		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
 			PointInTimeRecoveryEnabled: jsii.Bool(true),
 		},
-		RemovalPolicy:       awscdk.RemovalPolicy_DESTROY,
+		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
 	})
 
 	// SNS Topic for pipeline completion notifications (encrypted with AWS-managed SNS KMS key)
@@ -169,10 +169,10 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// Add retry for transient DynamoDB errors on MarkCompleted
 	markCompleted.AddRetry(&awsstepfunctions.RetryProps{
-		Errors:       &[]*string{awsstepfunctions.Errors_ALL()},
-		Interval:     awscdk.Duration_Seconds(jsii.Number(2)),
-		MaxAttempts:  jsii.Number(3),
-		BackoffRate:  jsii.Number(2.0),
+		Errors:      &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
 	})
 
 	// Step Functions DynamoDB UpdateItem task - mark as FAILED (error handler)
@@ -195,10 +195,10 @@ func NewCdkBaseStack(scope constructs.Construct, id string, props *CdkBaseStackP
 
 	// Add retry for transient DynamoDB errors on MarkFailed
 	markFailed.AddRetry(&awsstepfunctions.RetryProps{
-		Errors:       &[]*string{awsstepfunctions.Errors_ALL()},
-		Interval:     awscdk.Duration_Seconds(jsii.Number(2)),
-		MaxAttempts:  jsii.Number(3),
-		BackoffRate:  jsii.Number(2.0),
+		Errors:      &[]*string{awsstepfunctions.Errors_ALL()},
+		Interval:    awscdk.Duration_Seconds(jsii.Number(2)),
+		MaxAttempts: jsii.Number(3),
+		BackoffRate: jsii.Number(2.0),
 	})
 
 	// SNS Publish task - notify on successful pipeline completion

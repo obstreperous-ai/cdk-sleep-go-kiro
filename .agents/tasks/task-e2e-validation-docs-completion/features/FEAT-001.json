@@ -1,0 +1,24 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix the pre-existing TestLambdaHasInputBucketReadPermission test failure and add comprehensive end-to-end validation tests covering the complete pipeline flow (happy path + error scenarios). TDD approach: write/fix tests first, then ensure code passes.",
+  "status": "completed",
+  "steps": [
+    "Fix TestLambdaHasInputBucketReadPermission in cdk-base_test.go. The test expects s3:GetObject, s3:GetBucketLocation, s3:ListBucket as an array in a dedicated IAM policy, but CDK with the @aws-cdk/aws-iam:minimizePolicies feature flag merges these actions into the processor's default policy alongside other actions. Update the assertion to match the actual CDK-generated structure (the actions are combined into the SleepAudioProcessorServiceRoleDefaultPolicy statement).",
+    "Add an end-to-end validation test function TestEndToEndPipelineValidation in cdk-base_test.go that validates the complete pipeline flow: (1) S3 upload triggers EventBridge, (2) EventBridge rule targets the state machine, (3) state machine chain covers WriteInitialRecord -> ValidateInput -> ProcessAudio -> PollyTask -> MarkCompleted -> NotifyCompleted for valid inputs, (4) invalid inputs route to MarkFailed -> NotifyFailed, (5) output bucket and DynamoDB table are properly wired. This builds on the existing TestStateMachineFullSuccessPath and TestStateMachineFullErrorPath but adds assertions for the complete resource wiring.",
+    "Add TestEndToEndProcessorIntegration in lambda/processor/main_test.go that validates the full processor pipeline flow end-to-end: valid audio file downloaded from S3, processed via Polly, uploaded to output bucket, DynamoDB updated with COMPLETED status and outputLocation. Also test the failure path: invalid input rejected, S3 errors cause DynamoDB FAILED update, Polly errors cause graceful degradation with FAILED status.",
+    "Add TestRetryBehaviorUnderFailure in lambda/processor/main_test.go that simulates transient failures (first call fails, second succeeds) to verify the processor's error handling is compatible with the Step Functions retry configuration.",
+    "Delete the testdata/snapshot.json file so it gets regenerated with the fixed test assertions, then run all tests to confirm they pass."
+  ],
+  "acceptance_criteria": [
+    "NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct go test -v -count=1 ./... passes all tests including TestLambdaHasInputBucketReadPermission",
+    "End-to-end validation tests cover both success and failure paths through the pipeline",
+    "Processor integration tests validate the full flow: S3 download -> Polly -> S3 upload -> DynamoDB update",
+    "Retry behavior test confirms processor error handling supports Step Functions retry patterns"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/cdk-sleep-go-kiro && NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct go test -v -count=1 ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "The CDK GrantRead method generates wildcarded S3 actions (s3:GetObject*, s3:GetBucket*, s3:List*) not specific actions. The @aws-cdk/aws-iam:minimizePolicies feature flag combines all Lambda permissions into the SleepAudioProcessorServiceRoleDefaultPolicy. The snapshot test requires delete-and-regenerate when any infrastructure changes are made. Lambda processor uses second-level timestamp precision (20060102T150405Z) in output keys."
+}

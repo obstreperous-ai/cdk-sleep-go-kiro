@@ -10,8 +10,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      GOPROXY: direct
-      GOSUMDB: off
+      GOPROXY: "https://proxy.golang.org,direct"
+      GOSUMDB: "sum.golang.org"
       NODE_OPTIONS: ""
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +31,9 @@ jobs:
 
       - name: Download Go modules
         run: go mod download
+
+      - name: Download Lambda processor modules
+        run: cd lambda/processor && go mod download && cd ../..
 
       - name: Run tests
         run: go test -v ./...
