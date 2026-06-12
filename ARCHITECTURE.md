@@ -469,10 +469,17 @@ The following alarms are deployed to detect failures and trigger automated notif
 |---|---|---|---|---|---|---|
 | StateMachineExecutionsFailedAlarm | `ExecutionsFailed` (AWS/States) | StateMachineArn | >= 1 | 1 min | 1 | SNS Failed Topic |
 | LambdaErrorsAlarm | `Errors` (AWS/Lambda) | FunctionName | >= 1 | 5 min | 1 | SNS Failed Topic |
-| Lambda error rate (planned) | `Errors / Invocations` | - | > 5% over 5 min | 5 min | - | SNS Error Topic |
-| Step Functions throttles (planned) | `ExecutionThrottled` | - | >= 1 in 1 min | 1 min | - | SNS Error Topic |
-| DynamoDB throttles (planned) | `ThrottledRequests` | - | >= 5 in 5 min | 5 min | - | SNS Error Topic |
-| S3 4xx errors on input bucket (planned) | `4xxErrors` | - | >= 10 in 5 min | 5 min | - | SNS Error Topic |
+
+**Future Alarms (not yet implemented):**
+
+| Alarm | Metric (Namespace) | Dimension | Threshold | Period | Evaluation Periods | Action |
+|---|---|---|---|---|---|---|
+| Lambda error rate | `Errors / Invocations` | - | > 5% over 5 min | 5 min | - | SNS Error Topic |
+| Step Functions throttles | `ExecutionThrottled` | - | >= 1 in 1 min | 1 min | - | SNS Error Topic |
+| DynamoDB throttles | `ThrottledRequests` | - | >= 5 in 5 min | 5 min | - | SNS Error Topic |
+| S3 4xx errors on input bucket | `4xxErrors` | - | >= 10 in 5 min | 5 min | - | SNS Error Topic |
+
+These additional alarms are planned for future iterations to provide deeper operational visibility.
 
 Both deployed alarms use the `SleepAudioPipelineFailed` SNS topic as their alarm action, ensuring operational alerts flow through the same notification channel as pipeline failure events.
 
@@ -617,3 +624,25 @@ flowchart TD
 | **Content moderation** | Insert an Amazon Rekognition (audio transcription) + Comprehend moderation step before the AI enhancement state. |
 | **Cost attribution** | Tag all resources with `user_id` via S3 object tags propagated through the workflow; use AWS Cost Explorer tag-based allocation. |
 | **Async client polling** | Replace synchronous presigned-URL upload with an API Gateway + WebSocket endpoint that pushes job status updates to the client in real time. |
+
+---
+
+## Project Status
+
+The Event-Driven Sleep Audio Pipeline is **complete and ready for deployment**. All core components are implemented, tested, and documented:
+
+- Full pipeline flow: S3 upload -> EventBridge -> Step Functions -> Lambda/Polly -> S3 output + DynamoDB + SNS notifications
+- Error handling with specific error type matching, retry policies (3x with exponential backoff), and graceful degradation
+- Input validation at two levels (Step Functions Choice state + Lambda handler) providing defense-in-depth
+- Multi-environment support (dev/staging/prod) via CDK context
+- CI/CD pipeline skeleton (CDK Pipelines + GitHub Actions)
+- Comprehensive test suite: CDK assertions, Lambda unit tests, E2E validation tests, snapshot stability test
+- Observability: CloudWatch Logs (ALL level), X-Ray distributed tracing, CloudWatch Alarms
+
+**Next steps for production readiness:**
+
+1. Replace the CodeStar Connection placeholder ARN in `pipeline.go` with a real connection
+2. Deploy the planned additional CloudWatch alarms (see Observability section)
+3. Configure SNS topic subscriptions for operational alerting (email, Slack, PagerDuty)
+4. Set up S3 lifecycle policies for cost management
+5. Consider VPC deployment for network isolation in production

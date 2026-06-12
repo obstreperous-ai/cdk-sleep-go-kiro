@@ -61,8 +61,8 @@ func (m *mockPollyClient) SynthesizeSpeech(ctx context.Context, params *polly.Sy
 		return m.SynthesizeSpeechFunc(ctx, params, optFns...)
 	}
 	return &polly.SynthesizeSpeechOutput{
-		AudioStream:   io.NopCloser(strings.NewReader("synthesized audio bytes")),
-		ContentType:   strPtr("audio/mpeg"),
+		AudioStream:       io.NopCloser(strings.NewReader("synthesized audio bytes")),
+		ContentType:       strPtr("audio/mpeg"),
 		RequestCharacters: 62,
 	}, nil
 }
@@ -879,4 +879,503 @@ func TestProcessor_DynamoDBUpdateContainsExpectedFields(t *testing.T) {
 	if expressionNames["#ol"] != "outputLocation" {
 		t.Errorf("expected #ol to be 'outputLocation', got %s", expressionNames["#ol"])
 	}
+}
+
+// --- End-to-End Processor Integration Tests ---
+
+func TestEndToEndProcessorIntegration(t *testing.T) {
+	// Validates the full processor pipeline flow end-to-end:
+	// S3 download -> Polly synthesis -> S3 upload -> DynamoDB update
+
+	t.Run("FullSuccessPath", func(t *testing.T) {
+		// Track all service calls in order
+		var callOrder []string
+		var finalDynamoStatus string
+		var finalOutputLocation string
+
+		s3Mock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				callOrder = append(callOrder, "s3:GetObject")
+				if *params.Bucket != "input-bucket" {
+					t.Errorf("GetObject called with wrong bucket: %s", *params.Bucket)
+				}
+				if *params.Key != "uploads/e2e-test.mp3" {
+					t.Errorf("GetObject called with wrong key: %s", *params.Key)
+				}
+				return &s3.GetObjectOutput{
+					Body: io.NopCloser(strings.NewReader("real audio content")),
+				}, nil
+			},
+			PutObjectFunc: func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+				callOrder = append(callOrder, "s3:PutObject")
+				if *params.Bucket != "output-bucket" {
+					t.Errorf("PutObject called with wrong bucket: %s", *params.Bucket)
+				}
+				if !strings.HasPrefix(*params.Key, "processed/e2e-audio-id/") {
+					t.Errorf("PutObject key doesn't match expected pattern: %s", *params.Key)
+				}
+				return &s3.PutObjectOutput{}, nil
+			},
+		}
+
+		dynamoMock := &mockDynamoDBClient{
+			UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+				callOrder = append(callOrder, "dynamodb:UpdateItem")
+				if sv, ok := params.ExpressionAttributeValues[":status"].(*dynamodbtypes.AttributeValueMemberS); ok {
+					finalDynamoStatus = sv.Value
+				}
+				if ol, ok := params.ExpressionAttributeValues[":outputLocation"].(*dynamodbtypes.AttributeValueMemberS); ok {
+					finalOutputLocation = ol.Value
+				}
+				return &dynamodb.UpdateItemOutput{}, nil
+			},
+		}
+
+		pollyMock := &mockPollyClient{
+			SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+				callOrder = append(callOrder, "polly:SynthesizeSpeech")
+				return &polly.SynthesizeSpeechOutput{
+					AudioStream: io.NopCloser(strings.NewReader("polly-synthesized-audio")),
+				}, nil
+			},
+		}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "e2e-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "e2e-audio-id",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/e2e-test.mp3",
+		}
+
+		resp, err := handler(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+
+		// Verify final response
+		if resp.Status != "COMPLETED" {
+			t.Errorf("expected COMPLETED status, got %s", resp.Status)
+		}
+		if resp.AudioID != "e2e-audio-id" {
+			t.Errorf("expected audioId 'e2e-audio-id', got %s", resp.AudioID)
+		}
+		if !strings.Contains(resp.OutputLocation, "s3://output-bucket/processed/e2e-audio-id/") {
+			t.Errorf("unexpected OutputLocation: %s", resp.OutputLocation)
+		}
+
+		// Verify DynamoDB was updated with COMPLETED and outputLocation
+		if finalDynamoStatus != "COMPLETED" {
+			t.Errorf("expected DynamoDB status COMPLETED, got %s", finalDynamoStatus)
+		}
+		if !strings.Contains(finalOutputLocation, "s3://output-bucket/processed/e2e-audio-id/") {
+			t.Errorf("expected DynamoDB outputLocation to contain S3 URI, got %s", finalOutputLocation)
+		}
+
+		// Verify call order: GetObject -> SynthesizeSpeech -> PutObject -> UpdateItem
+		expectedOrder := []string{"s3:GetObject", "polly:SynthesizeSpeech", "s3:PutObject", "dynamodb:UpdateItem"}
+		if len(callOrder) != len(expectedOrder) {
+			t.Fatalf("expected %d service calls, got %d: %v", len(expectedOrder), len(callOrder), callOrder)
+		}
+		for i, expected := range expectedOrder {
+			if callOrder[i] != expected {
+				t.Errorf("call order[%d]: expected %s, got %s (full order: %v)", i, expected, callOrder[i], callOrder)
+			}
+		}
+	})
+
+	t.Run("InvalidInputRejected", func(t *testing.T) {
+		// Invalid file extension should be rejected before any service calls
+		s3Mock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				t.Error("S3 GetObject should not be called for invalid input")
+				return nil, fmt.Errorf("should not be called")
+			},
+		}
+		dynamoMock := &mockDynamoDBClient{
+			UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+				t.Error("DynamoDB should not be called for invalid input")
+				return nil, fmt.Errorf("should not be called")
+			},
+		}
+		pollyMock := &mockPollyClient{
+			SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+				t.Error("Polly should not be called for invalid input")
+				return nil, fmt.Errorf("should not be called")
+			},
+		}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "e2e-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "invalid-file",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/invalid-file.txt",
+		}
+
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected an error for invalid extension")
+		}
+		if !strings.Contains(err.Error(), "unsupported file extension") {
+			t.Errorf("expected unsupported file extension error, got: %v", err)
+		}
+	})
+
+	t.Run("S3ErrorCausesDynamoDBFailedUpdate", func(t *testing.T) {
+		var dynamoStatus string
+
+		s3Mock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				return nil, fmt.Errorf("NoSuchKey: The specified key does not exist")
+			},
+		}
+		dynamoMock := &mockDynamoDBClient{
+			UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+				if sv, ok := params.ExpressionAttributeValues[":status"].(*dynamodbtypes.AttributeValueMemberS); ok {
+					dynamoStatus = sv.Value
+				}
+				return &dynamodb.UpdateItemOutput{}, nil
+			},
+		}
+		pollyMock := &mockPollyClient{}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "e2e-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "s3-error-test",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/missing-file.mp3",
+		}
+
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected an error for S3 failure")
+		}
+
+		// DynamoDB should be updated with FAILED status
+		if dynamoStatus != "FAILED" {
+			t.Errorf("expected DynamoDB status FAILED, got %s", dynamoStatus)
+		}
+	})
+
+	t.Run("PollyErrorCausesDynamoDBFailedUpdate", func(t *testing.T) {
+		var dynamoStatus string
+
+		s3Mock := &mockS3Client{}
+		dynamoMock := &mockDynamoDBClient{
+			UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+				if sv, ok := params.ExpressionAttributeValues[":status"].(*dynamodbtypes.AttributeValueMemberS); ok {
+					dynamoStatus = sv.Value
+				}
+				return &dynamodb.UpdateItemOutput{}, nil
+			},
+		}
+		pollyMock := &mockPollyClient{
+			SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+				return nil, fmt.Errorf("ThrottlingException: Rate exceeded")
+			},
+		}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "e2e-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "polly-error-test",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/polly-error.wav",
+		}
+
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected an error for Polly failure")
+		}
+
+		// DynamoDB should be updated with FAILED status (graceful degradation)
+		if dynamoStatus != "FAILED" {
+			t.Errorf("expected DynamoDB status FAILED after Polly error, got %s", dynamoStatus)
+		}
+	})
+}
+
+// --- Retry Behavior Tests ---
+
+func TestRetryBehaviorUnderFailure(t *testing.T) {
+	// Simulates transient failures (first call fails, second succeeds) to verify
+	// the processor's error handling is compatible with Step Functions retry configuration.
+	// Step Functions retries invoke the entire Lambda again, so each invocation is independent.
+
+	t.Run("TransientS3FailureThenSuccess", func(t *testing.T) {
+		// First invocation: S3 GetObject fails (simulating transient network error)
+		s3FailMock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				return nil, fmt.Errorf("RequestTimeout: request timed out")
+			},
+		}
+		dynamoMock := &mockDynamoDBClient{}
+		pollyMock := &mockPollyClient{}
+
+		proc := &Processor{
+			S3Client:       s3FailMock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "retry-test-s3",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/retry-test.mp3",
+		}
+
+		// First invocation fails - returns an error that Step Functions can retry
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected first invocation to return an error")
+		}
+
+		// Second invocation succeeds (simulating Step Functions retry)
+		s3SuccessMock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				return &s3.GetObjectOutput{
+					Body: io.NopCloser(strings.NewReader("audio data on retry")),
+				}, nil
+			},
+		}
+
+		proc2 := &Processor{
+			S3Client:       s3SuccessMock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+		defaultProcessor = proc2
+
+		resp, err := handler(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected second invocation to succeed, got: %v", err)
+		}
+		if resp.Status != "COMPLETED" {
+			t.Errorf("expected COMPLETED on retry, got %s", resp.Status)
+		}
+	})
+
+	t.Run("TransientPollyFailureThenSuccess", func(t *testing.T) {
+		s3Mock := &mockS3Client{}
+		dynamoMock := &mockDynamoDBClient{}
+
+		// First invocation: Polly fails
+		pollyFailMock := &mockPollyClient{
+			SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+				return nil, fmt.Errorf("ServiceUnavailableException: service is temporarily unavailable")
+			},
+		}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyFailMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "retry-test-polly",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/retry-polly.mp3",
+		}
+
+		// First invocation fails
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected first invocation to return an error")
+		}
+
+		// Second invocation succeeds (Step Functions retry)
+		pollySuccessMock := &mockPollyClient{
+			SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+				return &polly.SynthesizeSpeechOutput{
+					AudioStream: io.NopCloser(strings.NewReader("polly audio on retry")),
+				}, nil
+			},
+		}
+
+		proc2 := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollySuccessMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+		defaultProcessor = proc2
+
+		resp, err := handler(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected second invocation to succeed, got: %v", err)
+		}
+		if resp.Status != "COMPLETED" {
+			t.Errorf("expected COMPLETED on retry, got %s", resp.Status)
+		}
+	})
+
+	t.Run("ErrorMessageIsRetryable", func(t *testing.T) {
+		// Verify that errors returned by the processor are plain errors (not wrapped
+		// in a way that would prevent Step Functions from matching error conditions).
+		s3Mock := &mockS3Client{
+			GetObjectFunc: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+				return nil, fmt.Errorf("InternalServerError: internal server error")
+			},
+		}
+		dynamoMock := &mockDynamoDBClient{}
+		pollyMock := &mockPollyClient{}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		event := Event{
+			AudioID:   "retryable-error-test",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/retryable.mp3",
+		}
+
+		_, err := handler(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+
+		// Error should be a plain error string that Step Functions can catch
+		// and match against States.TaskFailed or Lambda.ServiceException
+		errStr := err.Error()
+		if errStr == "" {
+			t.Error("error message should not be empty")
+		}
+		// The error should contain context about what failed
+		if !strings.Contains(errStr, "failed to download from S3") {
+			t.Errorf("error should describe the failure, got: %s", errStr)
+		}
+	})
+
+	t.Run("IndependentInvocationsDoNotShareState", func(t *testing.T) {
+		// Each Lambda invocation is independent (Step Functions creates new invocations
+		// on retry). Verify that two separate handler calls with different audioIDs
+		// produce different output paths, confirming no shared mutable state.
+		var firstCallOutputKey string
+		var secondCallOutputKey string
+
+		callCount := 0
+
+		s3Mock := &mockS3Client{
+			PutObjectFunc: func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+				callCount++
+				if callCount == 1 {
+					firstCallOutputKey = *params.Key
+				} else {
+					secondCallOutputKey = *params.Key
+				}
+				return &s3.PutObjectOutput{}, nil
+			},
+		}
+		dynamoMock := &mockDynamoDBClient{}
+		pollyMock := &mockPollyClient{}
+
+		proc := &Processor{
+			S3Client:       s3Mock,
+			DynamoDBClient: dynamoMock,
+			PollyClient:    pollyMock,
+			TableName:      "retry-table",
+			OutputBucket:   "output-bucket",
+		}
+
+		oldProcessor := defaultProcessor
+		defaultProcessor = proc
+		defer func() { defaultProcessor = oldProcessor }()
+
+		// Use different audioIDs to confirm output keys are based on input, not shared state
+		event1 := Event{
+			AudioID:   "independent-state-test-1",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/state-test-1.mp3",
+		}
+		event2 := Event{
+			AudioID:   "independent-state-test-2",
+			Bucket:    "input-bucket",
+			ObjectKey: "uploads/state-test-2.mp3",
+		}
+
+		_, err1 := handler(context.Background(), event1)
+		if err1 != nil {
+			t.Fatalf("first invocation failed: %v", err1)
+		}
+
+		_, err2 := handler(context.Background(), event2)
+		if err2 != nil {
+			t.Fatalf("second invocation failed: %v", err2)
+		}
+
+		// Output keys should differ because audioIDs differ
+		if firstCallOutputKey == "" || secondCallOutputKey == "" {
+			t.Fatal("expected both invocations to call PutObject")
+		}
+		if firstCallOutputKey == secondCallOutputKey {
+			t.Errorf("expected different output keys for different audioIDs, both got: %s", firstCallOutputKey)
+		}
+	})
 }

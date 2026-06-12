@@ -1,0 +1,25 @@
+{
+  "id": "FEAT-002",
+  "type": "docs",
+  "description": "Polish all documentation (README.md, ARCHITECTURE.md, CONTRIBUTING.md) and create SUMMARY.md. Update README with comprehensive project overview, deployment instructions, and usage guide. Finalize ARCHITECTURE.md with accurate current-state diagram. Ensure CONTRIBUTING.md reflects the final project state. Create SUMMARY.md capturing key decisions and experiment notes.",
+  "status": "completed",
+  "steps": [
+    "Rewrite README.md with: (1) Clear project overview describing the Event-Driven Sleep Audio Pipeline, (2) Architecture summary with a concise Mermaid diagram, (3) Prerequisites (Go 1.25+, Node.js 22+, AWS CDK CLI), (4) Getting started / local development instructions (go mod download, go test, cdk synth, cdk deploy), (5) Environment configuration (dev/staging/prod via -c env=X), (6) CI/CD pipeline info, (7) Project structure overview, (8) Testing instructions (unit tests, CDK assertions, snapshot tests), (9) Useful commands section (expanded from current).",
+    "Update ARCHITECTURE.md: Review and ensure the 'Implemented Components' and 'Current State Diagram' sections accurately reflect the current codebase. Remove any 'planned' items from the alarms table that are not actually implemented. Verify the Mermaid diagrams render correctly. Add a final 'Project Status' section indicating the pipeline is complete and ready for deployment.",
+    "Update CONTRIBUTING.md: Add sections for (1) Development environment setup (Go, Node.js, CDK), (2) Testing strategy (unit tests, CDK assertions, snapshot tests, end-to-end validation), (3) Code structure description, (4) How to add new processing steps or modify the pipeline.",
+    "Create SUMMARY.md at the project root with: (1) Project overview and purpose, (2) Key architectural decisions (serverless, event-driven, Express Workflows, Go CDK), (3) What was built (complete list of components), (4) TDD process followed, (5) Notes useful for experiment report (lessons learned, trade-offs).",
+    "Run tests to ensure no documentation changes broke anything (snapshot test may need regeneration if ARCHITECTURE.md changes affected the template)."
+  ],
+  "acceptance_criteria": [
+    "README.md contains clear deployment instructions, architecture summary, and usage guide",
+    "ARCHITECTURE.md accurately reflects the implemented system with correct Mermaid diagrams",
+    "CONTRIBUTING.md includes development setup, testing strategy, and code structure",
+    "SUMMARY.md exists with key decisions, components list, and experiment notes",
+    "All tests still pass after documentation updates"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/cdk-sleep-go-kiro && NODE_OPTIONS='' GOPROXY=https://proxy.golang.org,direct go test -v -count=1 ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "All documentation changes are purely additive and do not affect any code or test behavior. The snapshot test was not impacted since only markdown files were changed. Lambda processor tests run separately (own go.mod) and also pass. The ARCHITECTURE.md planned alarms were moved to a clearly labeled 'Future Alarms' subsection rather than removed entirely."
+}

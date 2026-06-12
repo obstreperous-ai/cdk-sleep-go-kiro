@@ -776,15 +776,17 @@ func TestLambdaHasInputBucketReadPermission(t *testing.T) {
 	stack := NewCdkBaseStack(app, "TestStack", nil)
 	template := assertions.Template_FromStack(stack, nil)
 
-	// Lambda execution role must have S3 read permissions for the input bucket
+	// Lambda execution role must have S3 read permissions for the input bucket.
+	// CDK's GrantRead generates wildcarded actions: s3:GetObject*, s3:GetBucket*, s3:List*
+	// These are combined into the processor's default policy alongside other permissions.
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
 			"Statement": assertions.Match_ArrayWith(&[]interface{}{
 				assertions.Match_ObjectLike(&map[string]interface{}{
 					"Action": assertions.Match_ArrayWith(&[]interface{}{
-						"s3:GetObject",
-						"s3:GetBucketLocation",
-						"s3:ListBucket",
+						"s3:GetObject*",
+						"s3:GetBucket*",
+						"s3:List*",
 					}),
 					"Effect": "Allow",
 				}),
@@ -1140,6 +1142,173 @@ func TestSpecificErrorTypesInCatchBlocks(t *testing.T) {
 				}),
 			}),
 		},
+	})
+}
+
+// --- End-to-End Pipeline Validation Tests ---
+
+func TestEndToEndPipelineValidation(t *testing.T) {
+	defer jsii.Close()
+
+	app := awscdk.NewApp(nil)
+	stack := NewCdkBaseStack(app, "TestStack", nil)
+	template := assertions.Template_FromStack(stack, nil)
+
+	// Validate the complete pipeline flow:
+	// 1. S3 upload triggers EventBridge (Object Created event from aws.s3)
+	t.Run("S3UploadTriggersEventBridge", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::Events::Rule"), map[string]interface{}{
+			"EventPattern": map[string]interface{}{
+				"source":      []interface{}{"aws.s3"},
+				"detail-type": []interface{}{"Object Created"},
+				"detail": map[string]interface{}{
+					"bucket": map[string]interface{}{
+						"name": assertions.Match_AnyValue(),
+					},
+				},
+			},
+		})
+	})
+
+	// 2. EventBridge rule targets the state machine
+	t.Run("EventBridgeTargetsStateMachine", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::Events::Rule"), map[string]interface{}{
+			"Targets": assertions.Match_ArrayWith(&[]interface{}{
+				assertions.Match_ObjectLike(&map[string]interface{}{
+					"Arn": map[string]interface{}{
+						"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioPipelineStateMachine")),
+					},
+				}),
+			}),
+		})
+	})
+
+	// 3. State machine success chain:
+	//    WriteInitialRecord -> ValidateInput -> (Choice) -> ProcessAudio -> PollyTask -> MarkCompleted -> NotifyCompleted
+	t.Run("SuccessChainWriteInitialToValidateInput", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`WriteInitialRecord.*"Next".*ValidateInput`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	t.Run("SuccessChainProcessAudioToPollyTask", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`ProcessAudio.*"Next".*PollyTask`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	t.Run("SuccessChainPollyTaskToMarkCompleted", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`PollyTask.*"Next".*MarkCompleted`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	t.Run("SuccessChainMarkCompletedToNotifyCompleted", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`MarkCompleted.*"Next".*NotifyCompleted`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	// 4. Invalid inputs route to MarkFailed -> NotifyFailed
+	t.Run("InvalidInputRoutesToMarkFailed", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`"Default":"MarkFailed"`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	t.Run("MarkFailedToNotifyFailed", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::StepFunctions::StateMachine"), map[string]interface{}{
+			"DefinitionString": map[string]interface{}{
+				"Fn::Join": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ArrayWith(&[]interface{}{
+						assertions.Match_StringLikeRegexp(jsii.String(`MarkFailed.*"Next".*NotifyFailed`)),
+					}),
+				}),
+			},
+		})
+	})
+
+	// 5. Output bucket is properly wired (S3 write permissions for processor)
+	t.Run("OutputBucketWritePermissions", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+			"PolicyDocument": map[string]interface{}{
+				"Statement": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ObjectLike(&map[string]interface{}{
+						"Action": assertions.Match_ArrayWith(&[]interface{}{
+							"s3:PutObject",
+						}),
+						"Effect": "Allow",
+					}),
+				}),
+			},
+			"Roles": assertions.Match_ArrayWith(&[]interface{}{
+				map[string]interface{}{
+					"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioProcessor")),
+				},
+			}),
+		})
+	})
+
+	// 5b. DynamoDB table is properly wired (read/write permissions for processor)
+	t.Run("DynamoDBTablePermissions", func(t *testing.T) {
+		template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
+			"PolicyDocument": map[string]interface{}{
+				"Statement": assertions.Match_ArrayWith(&[]interface{}{
+					assertions.Match_ObjectLike(&map[string]interface{}{
+						"Action": assertions.Match_ArrayWith(&[]interface{}{
+							"dynamodb:PutItem",
+							"dynamodb:UpdateItem",
+						}),
+						"Effect": "Allow",
+					}),
+				}),
+			},
+			"Roles": assertions.Match_ArrayWith(&[]interface{}{
+				map[string]interface{}{
+					"Ref": assertions.Match_StringLikeRegexp(jsii.String("SleepAudioProcessor")),
+				},
+			}),
+		})
+	})
+
+	// Verify 2 S3 buckets exist (input + output)
+	t.Run("TwoS3BucketsExist", func(t *testing.T) {
+		template.ResourceCountIs(jsii.String("AWS::S3::Bucket"), jsii.Number(2))
+	})
+
+	// Verify DynamoDB table exists
+	t.Run("DynamoDBTableExists", func(t *testing.T) {
+		template.ResourceCountIs(jsii.String("AWS::DynamoDB::Table"), jsii.Number(1))
 	})
 }
 
