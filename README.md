@@ -1,6 +1,32 @@
 # Event-Driven Sleep Audio Pipeline
 
+[![CI](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml/badge.svg)](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-v2.255.0-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+
 A serverless AWS-native pipeline that accepts raw audio uploads and transforms them into polished sleep audio artifacts using Amazon Polly for text-to-speech synthesis. Built with AWS CDK in Go, the system is fully event-driven with no polling, no always-on compute, and no manual orchestration.
+
+This project is also an **experiment in TDD-driven Infrastructure as Code** developed entirely through issue-driven development with AI agents. See [Experiment Methodology](#experiment-methodology) and [META-PROMPTS.md](./META-PROMPTS.md) for the reusable patterns extracted from this process.
+
+---
+
+## Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Quick Start](#quick-start)
+- [Testing](#testing)
+- [CI/CD](#cicd)
+- [Experiment Methodology](#experiment-methodology)
+- [Meta-Prompting Patterns](#meta-prompting-patterns)
+- [Project Structure](#project-structure)
+- [Environment Configuration](#environment-configuration)
+- [AWS Resources Created](#aws-resources-created)
+- [Useful Commands](#useful-commands)
+- [License](#license)
+- [Contributing](#contributing)
+
+---
 
 ## Architecture Overview
 
@@ -24,18 +50,32 @@ flowchart LR
     Failed --> SNSErr["SNS\nFailed"]
 ```
 
-For the full architecture documentation including Mermaid diagrams, error handling strategy, retry policies, and security design, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+### Key Design Decisions
 
-## Prerequisites
+| Decision | Rationale |
+|---|---|
+| Serverless-only | Zero idle cost, automatic scaling, minimal operational overhead |
+| Event-driven (EventBridge) | Decouples ingestion from processing; native S3 integration |
+| Step Functions Express | Built-in retry/catch, visual debugging, cost-effective for short jobs |
+| Go for CDK + Lambda | Type safety, fast cold starts, single language for infra and app code |
+| Defense-in-depth validation | Fast-fail at orchestration layer; secondary validation in Lambda |
 
-- **Go** 1.25 or later
-- **Node.js** 22 or later (required for CDK CLI)
-- **AWS CDK CLI** (`npm install -g aws-cdk`)
-- **AWS Account** with credentials configured (`aws configure`)
+For the full architecture documentation including detailed Mermaid diagrams, error handling strategy, retry policies, and security design, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
-## Getting Started
+---
 
-### Clone and install dependencies
+## Quick Start
+
+### Prerequisites
+
+| Tool | Version | Purpose |
+|---|---|---|
+| Go | 1.25+ | CDK app and Lambda processor |
+| Node.js | 22+ | AWS CDK CLI runtime |
+| AWS CDK CLI | latest | `npm install -g aws-cdk` |
+| AWS CLI | v2 | Account configuration and credential management |
+
+### Clone and Install
 
 ```bash
 git clone https://github.com/obstreperous-ai/cdk-sleep-go-kiro.git
@@ -51,19 +91,17 @@ cd lambda/processor && go mod download && cd ../..
 npm install -g aws-cdk
 ```
 
-### Run tests
+### Verify Setup
 
 ```bash
+# Run all tests
 go test -v -count=1 ./...
-```
 
-### Synthesize CloudFormation
-
-```bash
+# Synthesize CloudFormation
 cdk synth
 ```
 
-### Deploy to AWS
+### Deploy
 
 ```bash
 # Deploy to dev (default)
@@ -73,47 +111,156 @@ cdk deploy
 cdk deploy -c env=prod
 ```
 
-## Environment Configuration
+---
 
-The CDK app supports multiple environments via context variables. Stack names follow the pattern `SleepAudioPipeline-{env}`, ensuring separate CloudFormation stacks per environment.
+## Testing
 
-| Context Variable | Default | Description |
+The project uses a multi-layered testing strategy following strict TDD principles. Every feature starts with a failing test before any implementation code is written.
+
+### Test Layers
+
+| Layer | File(s) | What It Tests |
 |---|---|---|
-| `env` | `dev` | Target environment (dev/staging/prod) |
-| `pipeline` | `false` | Enable CDK Pipelines CI/CD stack |
+| CDK assertions | `cdk-base_test.go` | Infrastructure resources exist with correct properties |
+| IAM permissions | `cdk-base_test.go` | Least-privilege policies are scoped correctly |
+| E2E validation | `cdk-base_test.go` | Full pipeline wiring from S3 event through to SNS notification |
+| Snapshot stability | `cdk-base_test.go` | Golden file comparison prevents unintended infrastructure drift |
+| Lambda unit tests | `lambda/processor/main_test.go` | Handler logic, validation, error handling with mocked AWS services |
+| Lambda integration | `lambda/processor/main_test.go` | End-to-end processor flow and retry behavior |
+| Pipeline tests | `pipeline_test.go` | CDK Pipeline stack synthesizes correctly |
 
-### Usage examples
+### Running Tests
 
 ```bash
-# Default development environment
-cdk synth
+# All tests (recommended)
+go test -v -count=1 ./...
 
-# Production environment
-cdk synth -c env=prod
+# CDK infrastructure tests only
+go test -v -count=1 -run TestStack ./
 
-# Enable the CI/CD pipeline stack
-cdk synth -c pipeline=true
+# Lambda processor tests only
+go test -v -count=1 ./lambda/processor/
+
+# Specific test
+go test -v -count=1 -run TestEndToEndPipelineValidation ./
 ```
+
+### Snapshot Regeneration
+
+The snapshot test (`TestStackSnapshotStability`) compares the synthesized CloudFormation template against a golden file at `testdata/snapshot.json`. When you intentionally change infrastructure:
+
+```bash
+rm testdata/snapshot.json
+go test -v -count=1 -run TestStackSnapshotStability ./
+# Review the regenerated snapshot, then commit it alongside your changes
+```
+
+### Mock Pattern (Lambda Tests)
+
+Lambda tests use interface-based mocks for AWS SDK clients:
+
+```go
+type mockS3Client struct {
+    GetObjectFunc func(ctx context.Context, params *s3.GetObjectInput, ...) (*s3.GetObjectOutput, error)
+    PutObjectFunc func(ctx context.Context, params *s3.PutObjectInput, ...) (*s3.PutObjectOutput, error)
+}
+```
+
+When adding new AWS service interactions, define a new interface and corresponding mock struct following this pattern.
+
+---
 
 ## CI/CD
 
 ### GitHub Actions
 
-The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs on every push and pull request to `main`:
+The project includes a GitHub Actions workflow ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) that runs on every push and pull request to `main`:
 
 1. Sets up Go (version from `go.mod`) and Node.js 22
 2. Installs the AWS CDK CLI
-3. Downloads Go modules
+3. Downloads Go modules for both root and Lambda
 4. Runs `go test -v ./...`
 5. Runs `cdk synth` to validate the CloudFormation template
 
 ### CDK Pipelines
 
-A CDK Pipelines skeleton (`pipeline.go`) provides a self-mutating CI/CD pipeline using AWS CodePipeline. It is conditionally instantiated when `pipeline=true` context is set. The pipeline:
+A CDK Pipelines skeleton (`pipeline.go`) provides a self-mutating CI/CD pipeline using AWS CodePipeline. It is conditionally instantiated when `pipeline=true` context is set:
 
 - Fetches source from GitHub via CodeStar Connections
 - Runs `go test ./...` and `npx cdk synth` in the synth step
-- Deploys the application stack
+- Deploys the application stack automatically
+
+```bash
+cdk synth -c pipeline=true
+```
+
+---
+
+## Experiment Methodology
+
+This project serves as a **controlled experiment** in building production-grade Infrastructure as Code using strict TDD, issue-driven development, and AI agents as the primary development driver.
+
+### Strict TDD Rules
+
+Every change follows the red-green-refactor cycle at every layer:
+
+1. **Write a failing test** - Define the expected behavior before writing any implementation
+2. **Implement minimal code** - Write just enough to make the test pass
+3. **Refactor** - Clean up while keeping tests green
+4. **Repeat** - Each new feature starts with a new failing test
+
+TDD is applied across all layers: CDK assertion tests for infrastructure, interface-based mocks for Lambda logic, E2E validation tests for cross-resource wiring, and snapshot tests for regression prevention.
+
+### Issue-Driven Development
+
+Every change begins as a tracked issue with a defined scope:
+
+- No work happens without a corresponding issue
+- Each issue maps to a focused, reviewable pull request
+- Scope creep is explicitly prevented (one concern per issue)
+- Issues create an audit trail of design decisions
+
+### AI Agent Workflow
+
+AI agents are the primary developers, guided by a structured persona prompt (see [`.github/AGENT_GUIDELINES.md`](./.github/AGENT_GUIDELINES.md)):
+
+- The agent operates as a "Senior AWS CDK Go TDD Specialist"
+- Must follow strict TDD (failing tests first, then minimal code)
+- Must keep `ARCHITECTURE.md` in sync with every infrastructure change
+- Must prefer L2/L3 CDK constructs and follow AWS Well-Architected principles
+- Must never deploy until tests and synth succeed locally
+
+### Key Findings
+
+| Finding | Impact |
+|---|---|
+| Snapshot tests catch unintended drift during refactoring | High confidence in infrastructure stability |
+| Interface-based mocks enable rapid Lambda iteration without AWS credentials | Faster TDD cycles, no cloud dependency |
+| Dual-validation (Step Functions + Lambda) provides defense-in-depth | Cheaper fast-fail + comprehensive secondary checks |
+| Separate Go modules for Lambda isolate SDK dependencies | Smaller deployment artifacts, cleaner dependency graphs |
+| CDK feature flags affect IAM policy structure | Tests must account for flag-dependent behavior |
+
+For the full summary of lessons learned, trade-offs, and experiment notes, see [SUMMARY.md](./SUMMARY.md).
+
+---
+
+## Meta-Prompting Patterns
+
+This project demonstrates several reusable **meta-prompting patterns** for AI-driven infrastructure development. These patterns can be extracted and adapted for any CDK, Terraform, or IaC project using AI agents.
+
+The patterns include:
+
+- **Agent Persona Pattern** - Define a specialist identity with explicit constraints
+- **TDD-First Pattern** - Enforce red-green-refactor at every layer
+- **Architecture-as-Source-of-Truth Pattern** - Keep documentation as the living design authority
+- **Issue-Driven Development Pattern** - Scope every change to a tracked issue
+- **Conventional Commits Pattern** - Structured commit messages for automated tooling
+- **Snapshot Stability Pattern** - Golden file comparison for drift detection
+- **Defense-in-Depth Validation Pattern** - Validate at multiple layers
+
+For full pattern descriptions, templates, and guidance on adapting them to new projects, see [META-PROMPTS.md](./META-PROMPTS.md).
+
+---
 
 ## Project Structure
 
@@ -133,60 +280,71 @@ cdk-sleep-go-kiro/
   .github/
     workflows/
       ci.yml               # GitHub Actions CI workflow
+    AGENT_GUIDELINES.md    # AI agent persona and rules
   testdata/
     snapshot.json          # CDK snapshot golden file (auto-generated)
   ARCHITECTURE.md          # Detailed architecture documentation
-  CONTRIBUTING.md          # Contribution guidelines
-  SUMMARY.md               # Project summary and key decisions
+  CONTRIBUTING.md          # Contribution guidelines and dev setup
+  SUMMARY.md              # Project summary and key decisions
+  META-PROMPTS.md          # Reusable meta-prompting patterns
+  LICENSE                  # Apache License 2.0
 ```
 
-## Testing
+---
 
-The project uses a multi-layered testing strategy:
+## Environment Configuration
 
-### CDK Infrastructure Tests (`cdk-base_test.go`)
+The CDK app supports multiple environments via context variables. Stack names follow the pattern `SleepAudioPipeline-{env}`, ensuring separate CloudFormation stacks per environment.
 
-- **Resource assertion tests** - Verify that specific AWS resources exist with correct configurations (S3 buckets, DynamoDB table, Lambda function, EventBridge rule, Step Functions state machine, SNS topics, CloudWatch alarms)
-- **IAM permission tests** - Verify least-privilege policies are correctly scoped
-- **End-to-end validation tests** - Validate the full pipeline flow: S3 event triggers EventBridge, EventBridge targets Step Functions, state machine chains all states correctly for success and failure paths
-- **Snapshot test** - Golden file comparison ensuring infrastructure stability across changes
+| Context Variable | Default | Description |
+|---|---|---|
+| `env` | `dev` | Target environment (dev/staging/prod) |
+| `pipeline` | `false` | Enable CDK Pipelines CI/CD stack |
 
-### Lambda Unit Tests (`lambda/processor/main_test.go`)
-
-- **Input validation tests** - Missing fields, invalid extensions
-- **Happy path tests** - Full processing flow with mocked AWS services (S3, Polly, DynamoDB)
-- **Error handling tests** - S3 download failures, Polly errors, DynamoDB errors
-- **End-to-end integration tests** - Complete processor pipeline flow validation
-- **Retry behavior tests** - Transient failure recovery compatible with Step Functions retry configuration
-
-### Pipeline Tests (`pipeline_test.go`)
-
-- Verify the CDK Pipeline stack synthesizes correctly with CodePipeline resources
-
-### Running tests
+### Usage Examples
 
 ```bash
-# Run all tests (recommended)
-go test -v -count=1 ./...
+# Default development environment
+cdk synth
 
-# Run only CDK infrastructure tests
-go test -v -count=1 -run TestStack ./
+# Production environment
+cdk synth -c env=prod
 
-# Run only Lambda tests
-go test -v -count=1 ./lambda/processor/
-
-# Run a specific test
-go test -v -count=1 -run TestEndToEndPipelineValidation ./
+# Enable the CI/CD pipeline stack
+cdk synth -c pipeline=true
 ```
 
-### Snapshot regeneration
+### Environment Variables
 
-If infrastructure changes cause the snapshot test to fail, delete and regenerate:
+When running locally, you may need to set these environment variables:
 
 ```bash
-rm testdata/snapshot.json
-go test -v -count=1 -run TestStackSnapshotStability ./
+# Avoid Node.js proxy-bootstrap issues in sandboxed environments
+export NODE_OPTIONS=''
+
+# Ensure Go modules resolve correctly
+export GOPROXY=https://proxy.golang.org,direct
 ```
+
+---
+
+## AWS Resources Created
+
+When deployed, this stack creates:
+
+| Resource | Configuration |
+|---|---|
+| **S3 Input Bucket** | Encrypted (AES256), versioned, EventBridge enabled, block public access |
+| **S3 Output Bucket** | Encrypted (AES256), versioned, block public access |
+| **EventBridge Rule** | Matches S3 ObjectCreated events, triggers Step Functions |
+| **Step Functions State Machine** | Express Workflow, X-Ray tracing, CloudWatch logging at ALL level |
+| **Lambda Function** | Go custom runtime (`provided.al2023`), structured JSON logging |
+| **DynamoDB Table** | On-demand billing, point-in-time recovery, AWS-managed encryption |
+| **SNS Topics** | Completion + Failure notifications, KMS encrypted |
+| **CloudWatch Log Group** | State machine execution logs |
+| **CloudWatch Alarms** | ExecutionsFailed and Lambda Errors monitoring |
+
+---
 
 ## Useful Commands
 
@@ -200,20 +358,21 @@ go test -v -count=1 -run TestStackSnapshotStability ./
 | `cdk synth -c env=prod` | Synth for production environment |
 | `cdk synth -c pipeline=true` | Synth with CI/CD pipeline |
 
-## AWS Resources Created
-
-When deployed, this stack creates:
-
-- **S3 Input Bucket** - Receives raw audio uploads (encrypted, versioned, EventBridge enabled)
-- **S3 Output Bucket** - Stores processed audio (encrypted, versioned)
-- **EventBridge Rule** - Matches S3 ObjectCreated events, triggers Step Functions
-- **Step Functions State Machine** - Orchestrates the full pipeline (Express Workflow, X-Ray tracing)
-- **Lambda Function** - Go custom runtime processor (validates, downloads, processes, uploads)
-- **DynamoDB Table** - Metadata tracking (on-demand billing, point-in-time recovery)
-- **SNS Topics** - Completion and failure notifications (KMS encrypted)
-- **CloudWatch Log Group** - State machine execution logs
-- **CloudWatch Alarms** - ExecutionsFailed and Lambda Errors monitoring
+---
 
 ## License
 
-See [LICENSE](./LICENSE) for details.
+This project is licensed under the Apache License 2.0. See [LICENSE](./LICENSE) for details.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for development environment setup, testing strategy, code structure, and commit conventions.
+
+Key guidelines:
+
+- Follow strict TDD (failing tests first)
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format
+- Keep [ARCHITECTURE.md](./ARCHITECTURE.md) in sync with any infrastructure changes
+- Run `go test -v -count=1 ./...` and `cdk synth` before pushing
