@@ -161,13 +161,13 @@ Seven reusable meta-prompting patterns were extracted from this project. These p
 
 | # | Pattern | Purpose | Application |
 |---|---|---|---|
-| 1 | Agent Persona | Define specialist identity with constraints | Applied once at project setup; governs all subsequent work |
-| 2 | TDD-First | Enforce red-green-refactor at every layer | Applied to every issue; tests always precede implementation |
-| 3 | Architecture-as-Source-of-Truth | Single doc as living design authority | Applied to every infrastructure change; docs stay in sync |
-| 4 | Issue-Driven Development | Scope every change to a tracked issue | Applied at project level; no work without an issue |
-| 5 | Conventional Commits | Structured commit messages | Applied to every commit; enables automated tooling |
-| 6 | Snapshot Stability | Golden file comparison for drift detection | Applied to infrastructure tests; catches unintended changes |
-| 7 | Defense-in-Depth Validation | Validate at multiple layers | Applied to input processing; cheap checks before expensive ones |
+| 1 | [Agent Persona](./META-PROMPTS.md#pattern-1-agent-persona) | Define specialist identity with constraints | Applied once at project setup; governs all subsequent work |
+| 2 | [TDD-First](./META-PROMPTS.md#pattern-2-tdd-first) | Enforce red-green-refactor at every layer | Applied to every issue; tests always precede implementation |
+| 3 | [Architecture-as-Source-of-Truth](./META-PROMPTS.md#pattern-3-architecture-as-source-of-truth) | Single doc as living design authority | Applied to every infrastructure change; docs stay in sync |
+| 4 | [Issue-Driven Development](./META-PROMPTS.md#pattern-4-issue-driven-development) | Scope every change to a tracked issue | Applied at project level; no work without an issue |
+| 5 | [Conventional Commits](./META-PROMPTS.md#pattern-5-conventional-commits) | Structured commit messages | Applied to every commit; enables automated tooling |
+| 6 | [Snapshot Stability](./META-PROMPTS.md#pattern-6-snapshot-stability) | Golden file comparison for drift detection | Applied to infrastructure tests; catches unintended changes |
+| 7 | [Defense-in-Depth Validation](./META-PROMPTS.md#pattern-7-defense-in-depth-validation) | Validate at multiple layers | Applied to input processing; cheap checks before expensive ones |
 
 ### How Patterns Were Applied
 
@@ -209,15 +209,17 @@ The project was developed over 14 issues spanning 16 days. Each issue represents
 | 11 | #21 | TDD: Full Audio Processing Implementation | 2026-06-10 | 2026-06-11 | #22 | Complete Lambda processor: S3 download, Polly synthesis, S3 upload, DynamoDB update |
 | 12 | #23 | TDD: End-to-End Validation, Documentation, Completion | 2026-06-11 | 2026-06-12 | #24 | Full E2E test coverage; documentation polish; project completion verification |
 | 13 | #25 | Documentation: Review and Enrich README + Meta-Prompts | 2026-06-12 | 2026-06-13 | #26 | Comprehensive README rewrite; META-PROMPTS.md with 7 reusable patterns |
-| 14 | #27 | Documentation: Experiment Design and Meta-Prompting Process | 2026-06-13 | - | - | This document: experimental methodology, observations, and evaluation foundation |
+| 14 | #27 | Documentation: Experiment Design and Meta-Prompting Process | 2026-06-13 | 2026-06-13 | #28 | This document: experimental methodology, observations, and evaluation foundation |
+
+<!-- Note: Row 14 and velocity stats updated to reflect this PR's own merge. -->
 
 ### Development Velocity
 
 - **Total issues:** 14
-- **Total PRs merged:** 13
+- **Total PRs merged:** 14
 - **Average cycle time:** ~1 day per issue
 - **Infrastructure issues (TDD):** 10 (issues #5 through #23)
-- **Documentation issues:** 3 (issues #3, #25, #27)
+- **Documentation issues:** 4 (issues #3, #25, #27, plus this PR)
 - **Bootstrap issues:** 1 (issue #1)
 
 ---
