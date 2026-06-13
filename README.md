@@ -18,6 +18,7 @@ This project is also an **experiment in TDD-driven Infrastructure as Code** deve
 - [Testing](#testing)
 - [CI/CD](#cicd)
 - [Experiment Methodology](#experiment-methodology)
+- [Experiment Design](#experiment-design)
 - [Meta-Prompting Patterns](#meta-prompting-patterns)
 - [Project Structure](#project-structure)
 - [Environment Configuration](#environment-configuration)
@@ -200,6 +201,8 @@ cdk synth -c pipeline=true
 
 This project serves as a **controlled experiment** in building production-grade Infrastructure as Code using strict TDD, issue-driven development, and AI agents as the primary development driver.
 
+For the complete experiment design document covering the multi-language, multi-AI experimental setup, see [EXPERIMENT.md](./EXPERIMENT.md).
+
 ### Strict TDD Rules
 
 Every change follows the red-green-refactor cycle at every layer:
@@ -241,6 +244,21 @@ AI agents are the primary developers, guided by a structured persona prompt (see
 | CDK feature flags affect IAM policy structure | Tests must account for flag-dependent behavior |
 
 For the full summary of lessons learned, trade-offs, and experiment notes, see [SUMMARY.md](./SUMMARY.md).
+
+---
+
+## Experiment Design
+
+This project is one instance in a **5 languages x 3 AI assistants** experimental matrix. All instances build the same conceptual pipeline, enabling direct comparison of how different language-AI combinations handle identical requirements.
+
+| Dimension | This Instance |
+|---|---|
+| Language | Go 1.25 (CDK + Lambda) |
+| AI Agent | Kiro (by Amazon) |
+| Duration | 16 days, 14 issues, 13 PRs |
+| Methodology | Strict TDD + issue-driven development |
+
+For the full experiment design document including methodology, actors, prompting strategy, issue history, and preliminary observations, see [EXPERIMENT.md](./EXPERIMENT.md).
 
 ---
 
