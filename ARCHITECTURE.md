@@ -646,3 +646,14 @@ The Event-Driven Sleep Audio Pipeline is **complete and ready for deployment**. 
 3. Configure SNS topic subscriptions for operational alerting (email, Slack, PagerDuty)
 4. Set up S3 lifecycle policies for cost management
 5. Consider VPC deployment for network isolation in production
+
+---
+
+## Related Documentation
+
+| Document | Description |
+|----------|-------------|
+| [README.md](README.md) | Project overview, quick-start guide, deployment instructions, and usage examples |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, development workflow, and coding standards |
+| [SUMMARY.md](SUMMARY.md) | High-level project summary and key design decisions |
+| [META-PROMPTS.md](META-PROMPTS.md) | Reusable meta-prompting patterns for AI-assisted development workflows |
