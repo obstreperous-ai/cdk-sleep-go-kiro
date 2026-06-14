@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Fix snapshot test, improve Lambda test coverage from 81.9% to 90%+, fix test name typo, add CI coverage reporting, refactor for quality, and add reflection to EXPERIMENT.md",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Regenerate the stale testdata/snapshot.json by deleting it (the next test run will recreate it). This is already done during exploration but needs to be committed.",
+    "Step 2: Fix typo in cdk-base_test.go: rename TestSNSTopicsHaveNoBoardcodedNames to TestSNSTopicsHaveNoHardcodedNames.",
+    "Step 3: Improve Lambda processor test coverage in lambda/processor/main_test.go. Current coverage: 81.9%. Target: 90%+. Add tests for: (a) updateDynamoDBStatus with empty TableName (should return nil without calling DynamoDB), (b) handler with nil Polly AudioStream (covers the nil check branch), (c) Process with empty OutputBucket to cover edge case, (d) structuredLog function edge cases (json.Marshal failure is unlikely but test normal path explicitly), (e) empty objectKey extension edge case (objectKey='noext' - already tested but confirm coverage). Focus on covering the uncovered branches in Process() at 92.5% and updateDynamoDBStatus at 92.3%.",
+    "Step 4: Add coverage reporting to .github/workflows/ci.yml - add -coverprofile and upload coverage as artifact. Add a step to run Lambda processor tests with coverage too.",
+    "Step 5: Minor code quality refactoring in lambda/processor/main.go: (a) Extract the 10MB limit constant (10*1024*1024) to a named constant maxAudioStreamSize for clarity. (b) Add godoc comments to exported types (Event, Response, Processor) if missing or incomplete.",
+    "Step 6: Add a '## Issue #29 Reflection' section to EXPERIMENT.md documenting: what the code quality pass found, what was improved, coverage before/after, challenges encountered (golangci-lint version mismatch, snapshot staleness, NODE_OPTIONS environment issue).",
+    "Step 7: Run all tests (unset NODE_OPTIONS && go test -count=1 ./... and cd lambda/processor && go test -count=1 -cover ./...) to verify everything passes with improved coverage."
+  ],
+  "acceptance_criteria": [
+    "All tests pass (both root CDK module and lambda/processor module)",
+    "Lambda processor test coverage is 90% or higher",
+    "testdata/snapshot.json is regenerated and up-to-date",
+    "CI workflow includes coverage reporting",
+    "Test name typo (NoBoardcodedNames) is fixed to NoHardcodedNames",
+    "EXPERIMENT.md has a reflection section for issue #29",
+    "Code compiles cleanly with go vet in both modules"
+  ],
+  "verification": [
+    "cd /projects/sandbox/cdk-sleep-go-kiro/lambda/processor && go test -count=1 -cover ./... (should show >= 90%)",
+    "cd /projects/sandbox/cdk-sleep-go-kiro && unset NODE_OPTIONS && go test -count=1 ./... (all pass including snapshot)",
+    "cd /projects/sandbox/cdk-sleep-go-kiro && go vet ./... && cd lambda/processor && go vet ./...",
+    "grep -q 'NoHardcodedNames' cdk-base_test.go (typo fixed)",
+    "grep -q 'Issue #29' EXPERIMENT.md (reflection added)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

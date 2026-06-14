@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-lambda-go/lambdacontext"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/polly"
@@ -1135,6 +1137,239 @@ func TestEndToEndProcessorIntegration(t *testing.T) {
 			t.Errorf("expected DynamoDB status FAILED after Polly error, got %s", dynamoStatus)
 		}
 	})
+}
+
+// --- Coverage gap tests ---
+
+func TestUpdateDynamoDBStatus_EmptyTableName(t *testing.T) {
+	// When TableName is empty, updateDynamoDBStatus should return nil
+	// without calling DynamoDB at all.
+	dynamoMock := &mockDynamoDBClient{
+		UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+			t.Fatal("DynamoDB UpdateItem should not be called when TableName is empty")
+			return nil, nil
+		},
+	}
+
+	proc := &Processor{
+		S3Client:       &mockS3Client{},
+		DynamoDBClient: dynamoMock,
+		PollyClient:    &mockPollyClient{},
+		TableName:      "",
+		OutputBucket:   "output-bucket",
+	}
+
+	err := proc.updateDynamoDBStatus(context.Background(), "audio-123", "COMPLETED", "s3://bucket/key", 1024)
+	if err != nil {
+		t.Fatalf("expected nil error when TableName is empty, got: %v", err)
+	}
+}
+
+func TestProcessor_NilPollyAudioStream(t *testing.T) {
+	// When Polly returns a nil AudioStream, the processor should still succeed
+	// but with zero-length audio data.
+	var putObjectBody string
+
+	s3Mock := &mockS3Client{
+		PutObjectFunc: func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+			// Read the body to verify it's empty
+			data, _ := io.ReadAll(params.Body)
+			putObjectBody = string(data)
+			return &s3.PutObjectOutput{}, nil
+		},
+	}
+	dynamoMock := &mockDynamoDBClient{}
+	pollyMock := &mockPollyClient{
+		SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+			// Return nil AudioStream
+			return &polly.SynthesizeSpeechOutput{
+				AudioStream: nil,
+			}, nil
+		},
+	}
+
+	proc := &Processor{
+		S3Client:       s3Mock,
+		DynamoDBClient: dynamoMock,
+		PollyClient:    pollyMock,
+		TableName:      "audio-table",
+		OutputBucket:   "output-bucket",
+	}
+
+	event := Event{
+		AudioID:   "nil-stream-test",
+		Bucket:    "input-bucket",
+		ObjectKey: "uploads/nil-stream.mp3",
+	}
+
+	resp, err := proc.Process(context.Background(), event, "req-123", time.Now())
+	if err != nil {
+		t.Fatalf("expected no error with nil AudioStream, got: %v", err)
+	}
+	if resp.Status != "COMPLETED" {
+		t.Errorf("expected status COMPLETED, got %s", resp.Status)
+	}
+	if resp.FileSize != 0 {
+		t.Errorf("expected FileSize 0 with nil AudioStream, got %d", resp.FileSize)
+	}
+	if putObjectBody != "" {
+		t.Errorf("expected empty body uploaded to S3, got %q", putObjectBody)
+	}
+}
+
+// errorReader is a reader that always returns an error.
+type errorReader struct{}
+
+func (e *errorReader) Read(p []byte) (int, error) {
+	return 0, fmt.Errorf("simulated read error")
+}
+
+func (e *errorReader) Close() error {
+	return nil
+}
+
+func TestProcessor_PollyAudioStreamReadError(t *testing.T) {
+	// When Polly AudioStream fails on Read, the processor should return an error
+	// and update DynamoDB with FAILED status.
+	var dynamoStatus string
+
+	s3Mock := &mockS3Client{}
+	dynamoMock := &mockDynamoDBClient{
+		UpdateItemFunc: func(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
+			if sv, ok := params.ExpressionAttributeValues[":status"].(*dynamodbtypes.AttributeValueMemberS); ok {
+				dynamoStatus = sv.Value
+			}
+			return &dynamodb.UpdateItemOutput{}, nil
+		},
+	}
+	pollyMock := &mockPollyClient{
+		SynthesizeSpeechFunc: func(ctx context.Context, params *polly.SynthesizeSpeechInput, optFns ...func(*polly.Options)) (*polly.SynthesizeSpeechOutput, error) {
+			return &polly.SynthesizeSpeechOutput{
+				AudioStream: &errorReader{},
+			}, nil
+		},
+	}
+
+	proc := &Processor{
+		S3Client:       s3Mock,
+		DynamoDBClient: dynamoMock,
+		PollyClient:    pollyMock,
+		TableName:      "audio-table",
+		OutputBucket:   "output-bucket",
+	}
+
+	event := Event{
+		AudioID:   "read-error-test",
+		Bucket:    "input-bucket",
+		ObjectKey: "uploads/read-error.mp3",
+	}
+
+	_, err := proc.Process(context.Background(), event, "req-456", time.Now())
+	if err == nil {
+		t.Fatal("expected an error when AudioStream Read fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to read Polly audio stream") {
+		t.Errorf("expected error about failed audio stream read, got: %v", err)
+	}
+	if dynamoStatus != "FAILED" {
+		t.Errorf("expected DynamoDB status FAILED, got %s", dynamoStatus)
+	}
+}
+
+func TestHandler_WithLambdaContext(t *testing.T) {
+	// Test that handler correctly extracts request ID from Lambda context.
+	oldProcessor := defaultProcessor
+	defaultProcessor = nil
+	defer func() { defaultProcessor = oldProcessor }()
+
+	// Create a context with Lambda context information
+	lc := &lambdacontext.LambdaContext{
+		AwsRequestID: "test-request-id-abc123",
+	}
+	ctx := lambdacontext.NewContext(context.Background(), lc)
+
+	event := Event{AudioID: "ctx-test.mp3", Bucket: "bucket", ObjectKey: "ctx-test.mp3"}
+	resp, err := handler(ctx, event)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if resp.Status != "PROCESSED" {
+		t.Errorf("expected status PROCESSED, got %s", resp.Status)
+	}
+}
+
+func TestStructuredLog_BasicOutput(t *testing.T) {
+	// Capture stdout to verify structuredLog produces valid JSON.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	structuredLog("info", "test message", "req-id-123", "audio-456", "test-bucket", "test-key.mp3")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	output := strings.TrimSpace(buf.String())
+	if output == "" {
+		t.Fatal("expected log output, got empty string")
+	}
+
+	// Verify it's valid JSON
+	var entry map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &entry); err != nil {
+		t.Fatalf("expected valid JSON log output, got: %s (error: %v)", output, err)
+	}
+
+	// Verify expected fields
+	if entry["level"] != "info" {
+		t.Errorf("expected level 'info', got %v", entry["level"])
+	}
+	if entry["msg"] != "test message" {
+		t.Errorf("expected msg 'test message', got %v", entry["msg"])
+	}
+	if entry["requestId"] != "req-id-123" {
+		t.Errorf("expected requestId 'req-id-123', got %v", entry["requestId"])
+	}
+	if entry["audioId"] != "audio-456" {
+		t.Errorf("expected audioId 'audio-456', got %v", entry["audioId"])
+	}
+	if entry["bucket"] != "test-bucket" {
+		t.Errorf("expected bucket 'test-bucket', got %v", entry["bucket"])
+	}
+	if entry["objectKey"] != "test-key.mp3" {
+		t.Errorf("expected objectKey 'test-key.mp3', got %v", entry["objectKey"])
+	}
+	if _, hasTimestamp := entry["timestamp"]; !hasTimestamp {
+		t.Error("expected 'timestamp' field in log output")
+	}
+}
+
+func TestNewProcessor(t *testing.T) {
+	// Verify newProcessor correctly wires config and environment values.
+	cfg := aws.Config{Region: "us-east-1"}
+	proc := newProcessor(cfg, "my-table", "my-output-bucket", "my-input-bucket")
+
+	if proc.TableName != "my-table" {
+		t.Errorf("expected TableName 'my-table', got %s", proc.TableName)
+	}
+	if proc.OutputBucket != "my-output-bucket" {
+		t.Errorf("expected OutputBucket 'my-output-bucket', got %s", proc.OutputBucket)
+	}
+	if proc.InputBucket != "my-input-bucket" {
+		t.Errorf("expected InputBucket 'my-input-bucket', got %s", proc.InputBucket)
+	}
+	if proc.S3Client == nil {
+		t.Error("expected S3Client to be initialized")
+	}
+	if proc.DynamoDBClient == nil {
+		t.Error("expected DynamoDBClient to be initialized")
+	}
+	if proc.PollyClient == nil {
+		t.Error("expected PollyClient to be initialized")
+	}
 }
 
 // --- Retry Behavior Tests ---

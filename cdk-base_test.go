@@ -611,7 +611,7 @@ func TestMarkFailedTransitionsToNotifyFailed(t *testing.T) {
 	})
 }
 
-func TestSNSTopicsHaveNoBoardcodedNames(t *testing.T) {
+func TestSNSTopicsHaveNoHardcodedNames(t *testing.T) {
 	defer jsii.Close()
 
 	app := awscdk.NewApp(nil)
