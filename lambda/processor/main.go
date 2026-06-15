@@ -21,6 +21,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// maxAudioStreamSize is the maximum number of bytes to read from the Polly audio
+// stream. This prevents memory exhaustion if the stream misbehaves.
+const maxAudioStreamSize = 10 * 1024 * 1024 // 10 MB
+
 // S3Client defines the interface for S3 operations.
 type S3Client interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
@@ -197,8 +201,8 @@ func (p *Processor) Process(ctx context.Context, event Event, requestID string, 
 	// Read the Polly audio output
 	var audioData []byte
 	if pollyOutput.AudioStream != nil {
-		// Limit read to 10MB to prevent memory exhaustion if the stream misbehaves
-		audioData, err = io.ReadAll(io.LimitReader(pollyOutput.AudioStream, 10*1024*1024))
+		// Limit read to prevent memory exhaustion if the stream misbehaves
+		audioData, err = io.ReadAll(io.LimitReader(pollyOutput.AudioStream, maxAudioStreamSize))
 		if err != nil {
 			structuredLog("error", "Failed to read Polly audio stream", requestID, event.AudioID, event.Bucket, event.ObjectKey)
 			p.updateDynamoDBStatus(ctx, event.AudioID, "FAILED", "", 0)
@@ -282,6 +286,18 @@ func (p *Processor) updateDynamoDBStatus(ctx context.Context, audioID, status, o
 	return err
 }
 
+// newProcessor creates a Processor from the given AWS config and environment variables.
+func newProcessor(cfg aws.Config, tableName, outputBucket, inputBucket string) *Processor {
+	return &Processor{
+		S3Client:       s3.NewFromConfig(cfg),
+		DynamoDBClient: dynamodb.NewFromConfig(cfg),
+		PollyClient:    polly.NewFromConfig(cfg),
+		TableName:      tableName,
+		OutputBucket:   outputBucket,
+		InputBucket:    inputBucket,
+	}
+}
+
 func main() {
 	// Load AWS configuration
 	cfg, err := config.LoadDefaultConfig(context.Background())
@@ -290,25 +306,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create real AWS clients
-	s3Client := s3.NewFromConfig(cfg)
-	dynamoDBClient := dynamodb.NewFromConfig(cfg)
-	pollyClient := polly.NewFromConfig(cfg)
-
-	// Read environment variables
-	tableName := os.Getenv("TABLE_NAME")
-	outputBucket := os.Getenv("OUTPUT_BUCKET_NAME")
-	inputBucket := os.Getenv("INPUT_BUCKET_NAME")
-
-	// Initialize the processor
-	defaultProcessor = &Processor{
-		S3Client:       s3Client,
-		DynamoDBClient: dynamoDBClient,
-		PollyClient:    pollyClient,
-		TableName:      tableName,
-		OutputBucket:   outputBucket,
-		InputBucket:    inputBucket,
-	}
+	// Initialize the processor from config and environment
+	defaultProcessor = newProcessor(
+		cfg,
+		os.Getenv("TABLE_NAME"),
+		os.Getenv("OUTPUT_BUCKET_NAME"),
+		os.Getenv("INPUT_BUCKET_NAME"),
+	)
 
 	lambda.Start(handler)
 }
