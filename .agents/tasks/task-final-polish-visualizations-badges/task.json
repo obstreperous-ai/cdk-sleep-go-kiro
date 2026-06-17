@@ -1,7 +1,7 @@
 {
   "task_id": "task-final-polish-visualizations-badges",
   "task_description": "Final polish: generate visualizations from the architecture, add coverage badges/widgets, update README to clearly frame this as an AI-driven TDD experiment with self-grading, and add supplementary diagrams",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002"],
   "blocked_reason": null
 }
