@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "docs",
   "description": "Final polish: enhance diagrams, add coverage badge, improve README experiment framing, and add supplementary visualizations to clearly communicate the project as an AI-driven TDD experiment",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Step 1 - Add a coverage badge to README.md. Since CI already generates coverage.out artifacts (see .github/workflows/ci.yml), add a step in CI to compute the total coverage percentage and generate a badge. Use a simple approach: add a 'Go Coverage' badge after the existing badges. The badge can use shields.io with a static label initially (e.g. 93%+ based on the known Lambda coverage from FINAL-REPORT.md), or better, add a CI step that uses 'go tool cover -func' to extract the percentage and uploads a dynamic badge via a gist or shields.io endpoint. For simplicity and reliability in this final polish, add a static shields.io badge showing '93%+' coverage (from FINAL-REPORT.md metrics) in the badge row, linking to the CI workflow.",
     "Step 2 - Add supplementary Mermaid diagrams to ARCHITECTURE.md: (a) Add a 'Development Workflow' diagram showing the TDD cycle as a flowchart (Red -> Green -> Refactor -> Repeat), (b) Add an 'Issue Progression Timeline' diagram using a Mermaid gantt chart showing how the 14 issues progressed over the 16-day development period (data from EXPERIMENT.md issue history table), (c) Add a 'Test Layer Coverage' diagram showing the 7 test layers as a hierarchy/mindmap.",
