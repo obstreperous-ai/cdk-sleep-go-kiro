@@ -1,0 +1,25 @@
+{
+  "project_type": "Go CDK application (AWS CDK in Go) with Lambda processor - event-driven sleep audio pipeline",
+  "language": "Go 1.25",
+  "build_system": "go build with CDK CLI (npx cdk synth). Separate go.mod for lambda/processor/",
+  "test_framework": "Go standard testing package + CDK assertions (jsii bridge). Tests in cdk-base_test.go, pipeline_test.go, lambda/processor/main_test.go",
+  "build_command": "go build ./...",
+  "test_command": "NODE_OPTIONS='' go test -v -count=1 ./...",
+  "verification_instructions": "1. Run 'NODE_OPTIONS=\"\" go test -v -count=1 ./...' for root tests. 2. Run 'go test -v -count=1 ./lambda/processor/' for Lambda tests.",
+  "snapshot_or_generated_files": "testdata/snapshot.json - golden file for CDK snapshot test. Regenerate by deleting and running TestStackSnapshotStability. This task should NOT modify infrastructure so snapshot should not change.",
+  "setup_instructions": "go mod download && cd lambda/processor && go mod download && cd ../..",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode - can download Go modules and npm packages from registries. NODE_OPTIONS must be unset/empty for CDK jsii tests. CDK tests take ~75s due to jsii bridge.",
+  "contribution_requirements": "Follow Conventional Commits format. Keep ARCHITECTURE.md in sync with infra changes (this task is docs-only so no infra changes). No snapshot regeneration needed unless infrastructure changes.",
+  "key_patterns": "Mermaid diagrams in ARCHITECTURE.md render in GitHub. Badges use shields.io format in README. CI workflow already generates coverage.out artifacts. The project is an experiment in AI-driven TDD with 7 meta-prompting patterns.",
+  "relevant_files": [
+    "README.md",
+    "ARCHITECTURE.md",
+    "EXPERIMENT.md",
+    "FINAL-REPORT.md",
+    "META-PROMPTS.md",
+    "SUMMARY.md",
+    ".github/workflows/ci.yml",
+    "CONTRIBUTING.md"
+  ],
+  "directory_structure": "Root: CDK app (cdk-base.go, pipeline.go) + tests + docs. lambda/processor/: Go Lambda handler. .github/workflows/: CI. testdata/: snapshot golden file."
+}
