@@ -41,6 +41,14 @@ jobs:
       - name: Run Lambda processor tests
         run: cd lambda/processor && go test -v -cover -coverprofile=coverage.out ./...
 
+      - name: Report coverage
+        run: |
+          echo "### Root module coverage:"
+          go tool cover -func=coverage.out | tail -1
+          echo ""
+          echo "### Lambda processor coverage:"
+          cd lambda/processor && go tool cover -func=coverage.out | tail -1
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -16,6 +16,7 @@
 7. [Multi-Environment Support](#multi-environment-support)
 8. [Cost Considerations](#cost-considerations)
 9. [Future Extensibility](#future-extensibility)
+10. [Development Workflow](#development-workflow)
 
 ---
 
@@ -646,6 +647,114 @@ The Event-Driven Sleep Audio Pipeline is **complete and ready for deployment**. 
 3. Configure SNS topic subscriptions for operational alerting (email, Slack, PagerDuty)
 4. Set up S3 lifecycle policies for cost management
 5. Consider VPC deployment for network isolation in production
+
+---
+
+## Development Workflow
+
+### TDD Cycle
+
+The project follows a strict test-driven development cycle applied at every layer of the system. Each feature passes through this workflow before merging:
+
+```mermaid
+flowchart LR
+    Red["RED\nWrite failing test"] --> Green["GREEN\nMinimal implementation"]
+    Green --> Refactor["REFACTOR\nClean up, keep tests green"]
+    Refactor --> Commit["COMMIT\nConventional commit message"]
+    Commit --> Review["REVIEW\nArchitecture in sync?"]
+    Review --> Red
+
+    style Red fill:#d73a49,color:#fff
+    style Green fill:#2ea44f,color:#fff
+    style Refactor fill:#0366d6,color:#fff
+```
+
+This cycle was applied consistently across all 14 issues, covering CDK assertion tests, Lambda unit tests, integration tests, and snapshot stability tests.
+
+### Test Layer Architecture
+
+The project implements 7 distinct testing layers, each targeting a different concern:
+
+```mermaid
+flowchart TD
+    subgraph "Regression Layer"
+        Snapshot["Snapshot Stability\n(golden file comparison)"]
+    end
+
+    subgraph "Integration Layer"
+        E2E["E2E Validation\n(cross-resource wiring)"]
+        LambdaInteg["Lambda Integration\n(full processing flow)"]
+    end
+
+    subgraph "Unit Layer"
+        CDK["CDK Assertions\n(resource properties)"]
+        IAM["IAM Permissions\n(least-privilege verification)"]
+        LambdaUnit["Lambda Unit Tests\n(handler logic + mocks)"]
+        Retry["Retry Behavior\n(backoff simulation)"]
+    end
+
+    Snapshot --> E2E
+    Snapshot --> LambdaInteg
+    E2E --> CDK
+    E2E --> IAM
+    LambdaInteg --> LambdaUnit
+    LambdaInteg --> Retry
+
+    style Snapshot fill:#6f42c1,color:#fff
+    style E2E fill:#0366d6,color:#fff
+    style LambdaInteg fill:#0366d6,color:#fff
+    style CDK fill:#2ea44f,color:#fff
+    style IAM fill:#2ea44f,color:#fff
+    style LambdaUnit fill:#2ea44f,color:#fff
+    style Retry fill:#2ea44f,color:#fff
+```
+
+| Layer | Count | Runtime | Purpose |
+|---|---|---|---|
+| CDK Assertions | 38 | ~75s (jsii) | Verify resource existence and properties |
+| IAM Permissions | 8 | ~75s (jsii) | Validate least-privilege policies |
+| E2E Validation | 8 | ~75s (jsii) | Trace event flow across all resources |
+| Snapshot Stability | 1 | ~75s (jsii) | Prevent unintended infrastructure drift |
+| Lambda Unit | 14 | <1s | Test handler logic with mocked AWS services |
+| Lambda Integration | 5 | <1s | Full processing pipeline with coordinated mocks |
+| Retry Behavior | 3 | <1s | Verify transient failure recovery |
+
+### Issue Progression Timeline
+
+The 14 issues progressed through four phases over 16 days, maintaining a consistent velocity of approximately 1 issue per day:
+
+```mermaid
+gantt
+    title Development Timeline: 14 Issues over 16 Days
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+
+    section Bootstrap
+    #1 Bootstrap & Config        :done, 2026-05-28, 1d
+
+    section Architecture
+    #3 Architecture Design       :done, 2026-06-01, 2d
+
+    section Core Infrastructure
+    #5 S3 + EventBridge          :done, 2026-06-02, 1d
+    #7 Step Functions + Polly    :done, 2026-06-03, 1d
+    #9 DynamoDB + State I/O      :done, 2026-06-04, 1d
+    #11 SNS + Error Handling     :done, 2026-06-05, 1d
+
+    section Integration
+    #13 Lambda Skeleton          :done, 2026-06-06, 1d
+    #15 Pipeline Wiring          :done, 2026-06-07, 1d
+    #17 Deployment Prep          :done, 2026-06-08, 1d
+
+    section Production Hardening
+    #19 Observability + Retries  :done, 2026-06-09, 1d
+    #21 Audio Processing         :done, 2026-06-10, 1d
+    #23 E2E Validation           :done, 2026-06-11, 1d
+
+    section Documentation
+    #25 README + Meta-Prompts    :done, 2026-06-12, 1d
+    #27 Experiment Design        :done, 2026-06-13, 1d
+```
 
 ---
 

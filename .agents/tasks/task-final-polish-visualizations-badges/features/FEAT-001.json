@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Set up environment: download Go modules for root and lambda/processor, verify existing tests pass",
+  "status": "completed",
+  "steps": [
+    "Run 'go mod download' in the project root",
+    "Run 'cd lambda/processor && go mod download' for the Lambda module",
+    "Run 'NODE_OPTIONS=\"\" go test -v -count=1 ./...' to verify root tests pass",
+    "Run 'cd lambda/processor && go test -v -count=1 ./...' to verify Lambda tests pass"
+  ],
+  "acceptance_criteria": [
+    "All root Go tests pass (cdk-base_test.go, pipeline_test.go)",
+    "All Lambda processor tests pass (lambda/processor/main_test.go)"
+  ],
+  "verification": [
+    "NODE_OPTIONS='' go test -v -count=1 ./...",
+    "cd lambda/processor && go test -v -count=1 ./..."
+  ],
+  "blocked_reason": null,
+  "findings": "Pre-existing failure: TestStackSnapshotStability fails on main due to stale testdata/snapshot.json (CDK version drift). All other 56 root tests pass. All Lambda processor tests pass (21 tests). Go module proxy (storage.googleapis.com) blocked in COMMON_DEPENDENCIES mode - use GOPROXY=direct to download from GitHub directly."
+}

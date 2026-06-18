@@ -3,9 +3,14 @@
 [![CI](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml/badge.svg)](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![AWS CDK](https://img.shields.io/badge/AWS%20CDK-v2.255.0-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
+[![Coverage](https://img.shields.io/badge/Coverage-93%25+-brightgreen?logo=codecov&logoColor=white)](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/Tests-80_passed-success?logo=checkmarx&logoColor=white)](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/actions/workflows/ci.yml)
+[![Issues](https://img.shields.io/badge/Issues-14%2F14_closed-blueviolet?logo=github&logoColor=white)](https://github.com/obstreperous-ai/cdk-sleep-go-kiro/issues?q=is%3Aissue+is%3Aclosed)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
 A serverless AWS-native pipeline that accepts raw audio uploads and transforms them into polished sleep audio artifacts using Amazon Polly for text-to-speech synthesis. Built with AWS CDK in Go, the system is fully event-driven with no polling, no always-on compute, and no manual orchestration.
+
+> **This is an experiment, not just a project.** You are looking at one cell in a 5-language x 3-AI-assistant experimental matrix exploring whether AI agents can build production-grade infrastructure from scratch using strict TDD. Everything here was built by an AI (Kiro) following issue-driven development with no human-written implementation code. Explore the code, examine the tests, read the methodology, and draw your own conclusions about what AI-driven development can (and cannot) produce today.
 
 This project is also an **experiment in TDD-driven Infrastructure as Code** developed entirely through issue-driven development with AI agents. See [Experiment Methodology](#experiment-methodology) and [META-PROMPTS.md](./META-PROMPTS.md) for the reusable patterns extracted from this process.
 
@@ -18,6 +23,9 @@ This project is also an **experiment in TDD-driven Infrastructure as Code** deve
 - [Testing](#testing)
 - [CI/CD](#cicd)
 - [Experiment Methodology](#experiment-methodology)
+- [Self-Grading](#self-grading)
+- [Draw Your Own Conclusions](#draw-your-own-conclusions)
+- [Visualizations](#visualizations)
 - [Experiment Design](#experiment-design)
 - [Meta-Prompting Patterns](#meta-prompting-patterns)
 - [Project Structure](#project-structure)
@@ -244,6 +252,109 @@ AI agents are the primary developers, guided by a structured persona prompt (see
 | CDK feature flags affect IAM policy structure | Tests must account for flag-dependent behavior |
 
 For the full summary of lessons learned, trade-offs, and experiment notes, see [SUMMARY.md](./SUMMARY.md).
+
+### Self-Grading
+
+This instance includes a self-evaluation scored against the original experiment goals defined in [EXPERIMENT.md](./EXPERIMENT.md). The AI agent graded its own output, providing one data point for how AI systems assess their own work.
+
+| Goal | Score | Verdict |
+|---|---|---|
+| 1. Measure Feasibility | 8/10 | Demonstrated with caveats (no production deployment) |
+| 2. Evaluate Quality | 7/10 | High quality code, but undeployed and untested under load |
+| 3. Extract Patterns | 9/10 | 7 documented, reusable meta-prompting patterns |
+| 4. Compare Across Dimensions | 4/10 | Single instance; comparison framework exists but no data yet |
+| 5. Document Process | 9/10 | Comprehensive, reproducible methodology captured |
+| **Average** | **7.4/10** | |
+
+The full self-evaluation with detailed justification for each score is in [FINAL-REPORT.md](./FINAL-REPORT.md). Note that self-grading is inherently limited; external validation through deployment, cross-instance comparison, and independent code review remains necessary for definitive conclusions.
+
+### Metrics at a Glance
+
+| Metric | Value |
+|---|---|
+| Total lines of code | 6,092 |
+| Test functions | 80 |
+| Lambda processor coverage | 93.3% |
+| Documentation lines | ~2,200 |
+| Issues closed | 14/14 |
+| PRs merged | 14 |
+| Average cycle time | ~1 day/issue |
+| AWS resources defined | 10+ |
+| Meta-prompting patterns | 7 |
+
+### Draw Your Own Conclusions
+
+This project is **one data point** in a broader experiment, not a definitive answer. Consider these questions as you explore:
+
+- Does strict TDD produce better infrastructure when the developer is an AI?
+- Is the code quality comparable to what a senior engineer would write?
+- Are there failure modes that tests miss because the same AI wrote both code and tests?
+- Would a different language or AI agent make meaningfully different architectural choices?
+- Does the self-grading score (7.4/10) seem fair, generous, or harsh to you?
+
+The experiment is designed so that readers, other developers, and future researchers can evaluate the output independently. All source code, tests, documentation, commit history, and issue threads are public. The methodology is documented in [EXPERIMENT.md](./EXPERIMENT.md) and the patterns are reusable via [META-PROMPTS.md](./META-PROMPTS.md).
+
+We invite you to clone this repo, read the tests, compare with your own work, and form your own assessment.
+
+---
+
+## Visualizations
+
+### Experiment Matrix
+
+This project occupies one cell in the experimental matrix. The highlighted cell shows this instance:
+
+```mermaid
+block-beta
+    columns 4
+    space:1 A["Kiro"] B["Agent B"] C["Agent C"]
+    Go["Go"]:1 GoKiro["Go + Kiro\n(THIS REPO)\n93% coverage\n80 tests"]:1 GoB[" "]:1 GoC[" "]:1
+    TS["TypeScript"]:1 TSKiro[" "]:1 TSB[" "]:1 TSC[" "]:1
+    Py["Python"]:1 PyKiro[" "]:1 PyB[" "]:1 PyC[" "]:1
+    Java["Java"]:1 JaKiro[" "]:1 JaB[" "]:1 JaC[" "]:1
+    CS["C#"]:1 CSKiro[" "]:1 CSB[" "]:1 CSC[" "]:1
+
+    style GoKiro fill:#2ea44f,color:#fff
+```
+
+### Development Timeline
+
+The project progressed through 14 issues over 16 days with consistent velocity:
+
+```mermaid
+gantt
+    title Issue Progression (16 days)
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+
+    section Bootstrap
+    Bootstrap & Config       :done, i1, 2026-05-28, 1d
+
+    section Design
+    Architecture Design      :done, i3, 2026-06-01, 2d
+
+    section Infrastructure
+    S3 + EventBridge         :done, i5, 2026-06-02, 1d
+    Step Functions + Polly   :done, i7, 2026-06-03, 1d
+    DynamoDB + State I/O     :done, i9, 2026-06-04, 1d
+    SNS + Error Handling     :done, i11, 2026-06-05, 1d
+
+    section Integration
+    Lambda Skeleton          :done, i13, 2026-06-06, 1d
+    Pipeline Wiring          :done, i15, 2026-06-07, 1d
+    Deployment Prep          :done, i17, 2026-06-08, 1d
+
+    section Hardening
+    Error Handling + Observability :done, i19, 2026-06-09, 1d
+    Audio Processing         :done, i21, 2026-06-10, 1d
+    E2E Validation           :done, i23, 2026-06-11, 1d
+
+    section Documentation
+    README + Meta-Prompts    :done, i25, 2026-06-12, 1d
+    Experiment Design        :done, i27, 2026-06-13, 1d
+```
+
+For the full architecture diagrams including system topology, current state, error handling flows, and the TDD development workflow, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 

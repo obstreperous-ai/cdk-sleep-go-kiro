@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-002",
+  "type": "docs",
+  "description": "Final polish: enhance diagrams, add coverage badge, improve README experiment framing, and add supplementary visualizations to clearly communicate the project as an AI-driven TDD experiment",
+  "status": "completed",
+  "steps": [
+    "Step 1 - Add a coverage badge to README.md. Since CI already generates coverage.out artifacts (see .github/workflows/ci.yml), add a step in CI to compute the total coverage percentage and generate a badge. Use a simple approach: add a 'Go Coverage' badge after the existing badges. The badge can use shields.io with a static label initially (e.g. 93%+ based on the known Lambda coverage from FINAL-REPORT.md), or better, add a CI step that uses 'go tool cover -func' to extract the percentage and uploads a dynamic badge via a gist or shields.io endpoint. For simplicity and reliability in this final polish, add a static shields.io badge showing '93%+' coverage (from FINAL-REPORT.md metrics) in the badge row, linking to the CI workflow.",
+    "Step 2 - Add supplementary Mermaid diagrams to ARCHITECTURE.md: (a) Add a 'Development Workflow' diagram showing the TDD cycle as a flowchart (Red -> Green -> Refactor -> Repeat), (b) Add an 'Issue Progression Timeline' diagram using a Mermaid gantt chart showing how the 14 issues progressed over the 16-day development period (data from EXPERIMENT.md issue history table), (c) Add a 'Test Layer Coverage' diagram showing the 7 test layers as a hierarchy/mindmap.",
+    "Step 3 - Update README.md to enhance the experiment framing: (a) Add a prominent callout/blockquote near the top (after the first paragraph) that clearly positions this as an experiment and invites readers to draw their own conclusions, (b) Add a 'Self-Grading' subsection under 'Experiment Methodology' that summarizes the scores from FINAL-REPORT.md (Goal scores table) and links to the full report, (c) Add a 'Draw Your Own Conclusions' subsection that frames the project as one data point in a broader matrix and invites critical evaluation, (d) Add a 'Metrics at a Glance' table (from FINAL-REPORT.md key metrics) in the experiment section for quick visual reference.",
+    "Step 4 - Add a 'Visualizations' section to README.md (before 'Project Structure') that shows a condensed version of the development timeline and links to ARCHITECTURE.md for full diagrams. Include a small inline Mermaid diagram showing the experiment matrix (5 languages x 3 AIs) with the Go+Kiro cell highlighted.",
+    "Step 5 - Minor visual/workflow improvements: (a) Add a 'Tests' badge showing the number of test functions (80) using shields.io static badge, (b) Add an 'Issues' badge showing 14/14 closed, (c) Ensure all README sections have consistent formatting and that the Table of Contents is updated to include any new sections."
+  ],
+  "acceptance_criteria": [
+    "README.md has at least 6 badges in the header (CI, Go, AWS CDK, License, Coverage, Tests)",
+    "ARCHITECTURE.md has at least 3 Mermaid diagrams (existing system diagram + current state diagram + at least one new supplementary diagram)",
+    "README.md contains a prominent experiment callout/blockquote near the top inviting readers to evaluate",
+    "README.md has a 'Self-Grading' subsection with the goal scores from FINAL-REPORT.md",
+    "README.md has a section that frames this as one cell in a 5x3 experiment matrix",
+    "All Mermaid diagrams use valid Mermaid syntax (flowchart, gantt, or mindmap types)",
+    "README Table of Contents is updated to include all new sections",
+    "No infrastructure code is modified (this is docs-only)"
+  ],
+  "verification": [
+    "NODE_OPTIONS='' go test -v -count=1 ./... (tests still pass - no code changes)",
+    "Visually confirm README.md has 6+ badges in header",
+    "Grep for 'mermaid' in ARCHITECTURE.md to confirm 3+ diagram blocks exist",
+    "Grep for 'Self-Grading' or 'self-grading' in README.md to confirm section exists",
+    "Grep for 'Draw Your Own Conclusions' in README.md to confirm section exists"
+  ],
+  "blocked_reason": null,
+  "findings": "All acceptance criteria met: 7 badges in README header (CI, Go, AWS CDK, Coverage, Tests, Issues, License), 7 Mermaid diagrams in ARCHITECTURE.md (system diagram, current state, pipeline, deployment flow, TDD cycle, test layer architecture, issue timeline), prominent experiment callout blockquote near top, Self-Grading section with scores, Draw Your Own Conclusions section, Visualizations section with experiment matrix and gantt chart. No infrastructure code modified. CI workflow enhanced with coverage reporting step."
+}
